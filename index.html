@@ -21,6 +21,11 @@
       <button class="btn-primary" id="btn-new-session">Nova sessão</button>
     </header>
 
+    <div class="banner" id="backup-banner" hidden>
+      <span id="backup-banner-text"></span>
+      <button class="btn-secondary" id="btn-banner-backup">Exportar</button>
+    </div>
+
     <div id="session-list" class="list"></div>
 
     <p class="empty" id="empty-sessions" hidden>
@@ -30,23 +35,121 @@
 
   <!-- ============ SEPARADOR: CORPO ============ -->
   <section class="view" id="view-corpo" data-view="corpo" hidden>
-    <header class="topbar"><h1>Corpo</h1></header>
-    <p class="empty">Pesagem e medidas de sexta-feira.<br>Chega na próxima etapa.</p>
+    <header class="topbar">
+      <h1>Corpo</h1>
+      <button class="btn-primary" id="btn-new-body">Nova medição</button>
+    </header>
+    <div id="body-list" class="list"></div>
+    <p class="empty" id="empty-body" hidden>
+      Ainda não há medições.<br>A app abre já na sexta-feira mais recente.
+    </p>
   </section>
 
   <!-- ============ SEPARADOR: EVOLUÇÃO ============ -->
   <section class="view" id="view-evolucao" data-view="evolucao" hidden>
     <header class="topbar"><h1>Evolução</h1></header>
-    <p class="empty">Gráficos de carga, peso e volume.<br>Chegam depois de haver dados para mostrar.</p>
+
+    <section class="panel">
+      <h2>Força</h2>
+      <select id="ev-exercise" aria-label="Movimento a analisar"></select>
+      <div id="chart-strength" class="chart-host"></div>
+      <p class="hint">
+        A linha é o 1RM estimado pela fórmula de Epley, para tornar comparáveis
+        séries com repetições diferentes. Acima das 10 repetições sobrestima.
+      </p>
+      <div id="strength-prs" class="pr-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Peso corporal</h2>
+      <div id="chart-weight" class="chart-host"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Medidas</h2>
+      <select id="ev-measure" aria-label="Medida a analisar">
+        <option value="waist">Cintura</option>
+        <option value="hip">Anca</option>
+        <option value="chest">Peito</option>
+        <option value="armR">Braço direito</option>
+        <option value="thighR">Coxa direita</option>
+        <option value="neck">Pescoço</option>
+      </select>
+      <div id="chart-measure" class="chart-host"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Volume semanal</h2>
+      <div id="chart-volume" class="chart-host"></div>
+      <p class="hint">Soma de repetições × carga das séries de trabalho, últimas 12 semanas.</p>
+    </section>
+
+    <section class="panel">
+      <h2>WOD</h2>
+      <select id="ev-wod" aria-label="WOD a analisar"></select>
+      <div id="chart-wod" class="chart-host"></div>
+      <p class="hint" id="wod-hint"></p>
+    </section>
   </section>
 
   <!-- ============ SEPARADOR: DEFINIÇÕES ============ -->
   <section class="view" id="view-definicoes" data-view="definicoes" hidden>
     <header class="topbar"><h1>Definições</h1></header>
-    <p class="empty">Exportar, importar e gerir o catálogo.<br>Chegam na próxima etapa.</p>
+
+    <section class="panel">
+      <h2>Cópia de segurança</h2>
+      <p class="stat" id="stat-line"></p>
+      <p class="stat" id="last-backup-line"></p>
+      <div class="btn-stack">
+        <button class="btn-primary" id="btn-export-json">Exportar tudo (JSON)</button>
+        <button class="btn-secondary" id="btn-import-json">Importar JSON</button>
+        <input type="file" id="file-import" accept="application/json,.json,.txt" hidden>
+      </div>
+      <label class="field">
+        <span class="label">Avisar-me a cada</span>
+        <select id="f-backup-interval">
+          <option value="0">Nunca</option>
+          <option value="7">7 dias</option>
+          <option value="14">14 dias</option>
+          <option value="30">30 dias</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="panel">
+      <h2>Exportar para folha de cálculo</h2>
+      <p class="hint">CSV separado por ponto e vírgula, com BOM — abre direito no Excel português.</p>
+      <div class="btn-stack">
+        <button class="btn-secondary" id="btn-csv-sessions">Sessões</button>
+        <button class="btn-secondary" id="btn-csv-sets">Séries de força</button>
+        <button class="btn-secondary" id="btn-csv-wods">WODs</button>
+        <button class="btn-secondary" id="btn-csv-body">Peso e medidas</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Catálogo de movimentos</h2>
+      <div class="new-exercise">
+        <input type="text" id="f-cat-name" placeholder="Novo movimento (inglês)">
+        <select id="f-cat-category">
+          <option value="barbell">barbell</option>
+          <option value="dumbbell">dumbbell</option>
+          <option value="gymnastics">gymnastics</option>
+          <option value="other">other</option>
+        </select>
+        <button class="btn-secondary" id="btn-cat-add">Criar</button>
+      </div>
+      <div id="catalog-list" class="catalog"></div>
+    </section>
+
+    <section class="panel danger-panel">
+      <h2>Apagar tudo</h2>
+      <p class="hint">Remove sessões, séries, WODs, medições e catálogo. Exporta antes.</p>
+      <button class="btn-danger" id="btn-wipe">Apagar todos os dados</button>
+    </section>
   </section>
 
-  <!-- ============ EDITOR DE SESSÃO (ecrã inteiro) ============ -->
+  <!-- ============ EDITOR DE SESSÃO ============ -->
   <section class="view editor" id="view-editor" hidden>
     <header class="topbar">
       <button class="btn-ghost" id="btn-cancel">Cancelar</button>
@@ -61,7 +164,6 @@
         <input type="date" id="f-date">
       </label>
 
-      <!-- Bloco: métricas gerais -->
       <details class="block" open>
         <summary>Métricas</summary>
         <div class="block-body">
@@ -82,7 +184,6 @@
         </div>
       </details>
 
-      <!-- Bloco: força -->
       <details class="block" open>
         <summary>Força</summary>
         <div class="block-body">
@@ -107,7 +208,6 @@
         </div>
       </details>
 
-      <!-- Bloco: WOD -->
       <details class="block" open>
         <summary>WOD</summary>
         <div class="block-body">
@@ -136,7 +236,6 @@
             </label>
           </div>
 
-          <!-- Resultado: só aparece o campo que faz sentido para o formato -->
           <div class="row-2" id="wod-time-fields">
             <label class="field">
               <span class="label">Tempo <em>min</em></span>
@@ -177,13 +276,77 @@
       </label>
 
       <button class="btn-danger" id="btn-delete" hidden>Apagar sessão</button>
+    </div>
+  </section>
 
+  <!-- ============ EDITOR DE MEDIÇÃO CORPORAL ============ -->
+  <section class="view editor" id="view-body-editor" hidden>
+    <header class="topbar">
+      <button class="btn-ghost" id="btn-body-cancel">Cancelar</button>
+      <h1 id="body-editor-title">Nova medição</h1>
+      <button class="btn-primary" id="btn-body-save">Guardar</button>
+    </header>
+
+    <div class="editor-body">
+      <label class="field">
+        <span class="label">Data</span>
+        <input type="date" id="b-date">
+      </label>
+
+      <div class="row-2">
+        <label class="field">
+          <span class="label">Peso <em>kg</em></span>
+          <input type="number" id="b-weight" inputmode="decimal" min="0" step="0.1" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">Massa gorda <em>%</em></span>
+          <input type="number" id="b-bodyfat" inputmode="decimal" min="0" step="0.1" placeholder="—">
+        </label>
+      </div>
+
+      <details class="block" open>
+        <summary>Medidas em cm</summary>
+        <div class="block-body">
+          <div class="row-2">
+            <label class="field">
+              <span class="label">Cintura</span>
+              <input type="number" id="b-waist" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Anca</span>
+              <input type="number" id="b-hip" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Peito</span>
+              <input type="number" id="b-chest" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Pescoço</span>
+              <input type="number" id="b-neck" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Braço direito</span>
+              <input type="number" id="b-armR" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Coxa direita</span>
+              <input type="number" id="b-thighR" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <label class="field">
+        <span class="label">Notas</span>
+        <textarea id="b-notes" rows="2" placeholder="Em jejum, depois do treino, etc."></textarea>
+      </label>
+
+      <button class="btn-danger" id="btn-body-delete" hidden>Apagar medição</button>
     </div>
   </section>
 
 </main>
 
-<!-- ============ BARRA DE SEPARADORES ============ -->
 <nav class="tabbar" id="tabbar">
   <button class="tab is-active" data-target="treino">Treino</button>
   <button class="tab" data-target="corpo">Corpo</button>
@@ -194,6 +357,7 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="js/db.js"></script>
+<script src="js/chart.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

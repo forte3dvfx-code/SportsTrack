@@ -2,13 +2,14 @@
  * IMPORTANTE: sempre que alterares qualquer ficheiro desta lista,
  * incrementa CACHE_NAME (v1 -> v2) ou o browser continua a servir o antigo. */
 
-const CACHE_NAME = 'treino-v1';
+const CACHE_NAME = 'treino-v2';
 
 const SHELL = [
   './',
   './index.html',
   './css/style.css',
   './js/db.js',
+  './js/chart.js',
   './js/app.js',
   './manifest.json',
   './icons/icon-192.png',

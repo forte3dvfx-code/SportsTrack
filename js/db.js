@@ -1,9 +1,11 @@
 /* db.js — camada de persistência (IndexedDB)
  * Todas as funções devolvem Promises. Sem dependências externas.
- */
+ *
+ * VERSÃO 2: acrescenta a store 'settings'. A migração é aditiva —
+ * os dados já gravados na versão 1 mantêm-se intactos. */
 
 const DB_NAME = 'treino-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let _db = null;
 
@@ -90,6 +92,10 @@ function openDB() {
         // A data é a própria chave: uma medição por dia, sem duplicados possíveis.
         db.createObjectStore('bodyMetrics', { keyPath: 'date' });
       }
+      // Novo na versão 2.
+      if (!db.objectStoreNames.contains('settings')) {
+        db.createObjectStore('settings', { keyPath: 'key' });
+      }
     };
 
     req.onsuccess = () => { _db = req.result; resolve(_db); };
@@ -97,7 +103,7 @@ function openDB() {
   });
 }
 
-/* Helper genérico: corre uma operação numa store e devolve o resultado. */
+/* Helper genérico: corre uma operação numa store e resolve quando a transacção fecha. */
 function tx(storeNames, mode, fn) {
   return openDB().then((db) => new Promise((resolve, reject) => {
     const t = db.transaction(storeNames, mode);
@@ -116,6 +122,18 @@ function reqToPromise(req) {
   });
 }
 
+function getAll(storeName) {
+  return openDB().then((db) =>
+    reqToPromise(db.transaction(storeName).objectStore(storeName).getAll())
+  );
+}
+
+function getByIndex(storeName, indexName, value) {
+  return openDB().then((db) =>
+    reqToPromise(db.transaction(storeName).objectStore(storeName).index(indexName).getAll(value))
+  );
+}
+
 /* ---------- Exercícios ---------- */
 
 async function seedExercisesIfEmpty() {
@@ -132,14 +150,9 @@ async function seedExercisesIfEmpty() {
 }
 
 function getExercises() {
-  return openDB().then((db) => new Promise((resolve, reject) => {
-    const req = db.transaction('exercises').objectStore('exercises').getAll();
-    req.onsuccess = () => {
-      // Ordem alfabética, para o selector ser previsível.
-      resolve(req.result.sort((a, b) => a.name.localeCompare(b.name, 'en')));
-    };
-    req.onerror = () => reject(req.error);
-  }));
+  return getAll('exercises').then((rows) =>
+    rows.sort((a, b) => a.name.localeCompare(b.name, 'en'))
+  );
 }
 
 async function addExercise(name, category) {
@@ -148,28 +161,28 @@ async function addExercise(name, category) {
   return record;
 }
 
+/* Só se permite apagar movimentos nunca usados — apagar um movimento com
+ * séries gravadas deixaria histórico órfão sem nome. */
+async function countSetsForExercise(exerciseId) {
+  const rows = await getByIndex('sets', 'exerciseId', exerciseId);
+  return rows.length;
+}
+
+function deleteExercise(id) {
+  return tx('exercises', 'readwrite', (t) => t.objectStore('exercises').delete(id));
+}
+
 /* ---------- Sessões ---------- */
 
 function getSessions() {
-  return openDB().then((db) => new Promise((resolve, reject) => {
-    const req = db.transaction('sessions').objectStore('sessions').getAll();
-    req.onsuccess = () => {
-      // Mais recentes primeiro.
-      resolve(req.result.sort((a, b) => b.date.localeCompare(a.date)));
-    };
-    req.onerror = () => reject(req.error);
-  }));
+  return getAll('sessions').then((rows) =>
+    rows.sort((a, b) => b.date.localeCompare(a.date))
+  );
 }
 
 function getSession(id) {
   return openDB().then((db) =>
     reqToPromise(db.transaction('sessions').objectStore('sessions').get(id))
-  );
-}
-
-function getByIndex(storeName, indexName, value) {
-  return openDB().then((db) =>
-    reqToPromise(db.transaction(storeName).objectStore(storeName).index(indexName).getAll(value))
   );
 }
 
@@ -182,10 +195,12 @@ function getWodsBySession(sessionId) {
   return getByIndex('wods', 'sessionId', sessionId);
 }
 
+function getAllSets() { return getAll('sets'); }
+function getAllWods() { return getAll('wods'); }
+
 /* Grava a sessão inteira: cabeçalho + séries + wod.
  * As séries e o wod anteriores são apagados e reescritos — é a forma mais
- * simples de manter tudo coerente numa app de um só utilizador. A alternativa
- * (diff registo a registo) seria mais código para zero ganho prático. */
+ * simples de manter tudo coerente numa app de um só utilizador. */
 async function saveSession(session, sets, wods) {
   const oldSets = await getSetsBySession(session.id);
   const oldWods = await getWodsBySession(session.id);
@@ -215,33 +230,156 @@ async function deleteSession(id) {
   });
 }
 
-/* ---------- Medições corporais (stores prontas, ecrã fica para a etapa seguinte) ---------- */
+/* ---------- Medições corporais ---------- */
 
 function getBodyMetrics() {
-  return openDB().then((db) => new Promise((resolve, reject) => {
-    const req = db.transaction('bodyMetrics').objectStore('bodyMetrics').getAll();
-    req.onsuccess = () => resolve(req.result.sort((a, b) => b.date.localeCompare(a.date)));
-    req.onerror = () => reject(req.error);
-  }));
+  return getAll('bodyMetrics').then((rows) =>
+    rows.sort((a, b) => b.date.localeCompare(a.date))
+  );
+}
+
+function getBodyMetric(date) {
+  return openDB().then((db) =>
+    reqToPromise(db.transaction('bodyMetrics').objectStore('bodyMetrics').get(date))
+  );
 }
 
 function saveBodyMetric(record) {
   return tx('bodyMetrics', 'readwrite', (t) => t.objectStore('bodyMetrics').put(record));
 }
 
+function deleteBodyMetric(date) {
+  return tx('bodyMetrics', 'readwrite', (t) => t.objectStore('bodyMetrics').delete(date));
+}
+
+/* ---------- Definições ---------- */
+
+async function getSetting(key, fallback) {
+  const db = await openDB();
+  const row = await reqToPromise(db.transaction('settings').objectStore('settings').get(key));
+  return row ? row.value : fallback;
+}
+
+function setSetting(key, value) {
+  return tx('settings', 'readwrite', (t) => t.objectStore('settings').put({ key: key, value: value }));
+}
+
+/* ---------- Exportar / importar ---------- */
+
+async function exportAll() {
+  const [sessions, sets, wods, exercisesRows, bodyMetrics] = await Promise.all([
+    getAll('sessions'), getAll('sets'), getAll('wods'),
+    getAll('exercises'), getAll('bodyMetrics')
+  ]);
+  return {
+    app: 'treino',
+    schema: 2,
+    exportedAt: new Date().toISOString(),
+    data: {
+      sessions: sessions,
+      sets: sets,
+      wods: wods,
+      exercises: exercisesRows,
+      bodyMetrics: bodyMetrics
+    }
+  };
+}
+
+/* Importa fundindo com o que já existe, nunca apagando.
+ * Os movimentos são reconciliados por nome: se "Back Squat" já existe com
+ * outro id, as séries importadas são reapontadas para o id local em vez de
+ * se criar um segundo "Back Squat" no catálogo. */
+async function importAll(payload) {
+  if (!payload || !payload.data) throw new Error('Ficheiro sem o campo "data".');
+  const d = payload.data;
+  const result = { sessions: 0, sets: 0, wods: 0, exercises: 0, bodyMetrics: 0 };
+
+  const local = await getExercises();
+  const byName = {};
+  local.forEach((e) => { byName[e.name.toLowerCase()] = e.id; });
+
+  const idMap = {};   // id importado -> id a usar localmente
+  const toInsert = [];
+
+  (d.exercises || []).forEach((e) => {
+    if (!e || !e.name) return;
+    const key = String(e.name).toLowerCase();
+    if (byName[key]) {
+      idMap[e.id] = byName[key];
+    } else {
+      const record = { id: e.id || uid(), name: e.name, category: e.category || 'other' };
+      byName[key] = record.id;
+      idMap[e.id] = record.id;
+      toInsert.push(record);
+      result.exercises++;
+    }
+  });
+
+  await tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics'], 'readwrite', (t) => {
+    toInsert.forEach((e) => t.objectStore('exercises').put(e));
+
+    (d.sessions || []).forEach((s) => {
+      if (!s || !s.id || !s.date) return;
+      t.objectStore('sessions').put(s);
+      result.sessions++;
+    });
+
+    (d.sets || []).forEach((s) => {
+      if (!s || !s.id) return;
+      const copy = Object.assign({}, s);
+      if (idMap[copy.exerciseId]) copy.exerciseId = idMap[copy.exerciseId];
+      t.objectStore('sets').put(copy);
+      result.sets++;
+    });
+
+    (d.wods || []).forEach((w) => {
+      if (!w || !w.id) return;
+      t.objectStore('wods').put(w);
+      result.wods++;
+    });
+
+    (d.bodyMetrics || []).forEach((b) => {
+      if (!b || !b.date) return;
+      t.objectStore('bodyMetrics').put(b);
+      result.bodyMetrics++;
+    });
+  });
+
+  return result;
+}
+
+/* Apaga tudo menos as definições. Usado só pelo botão de reposição. */
+function clearAllData() {
+  return tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics'], 'readwrite', (t) => {
+    ['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics']
+      .forEach((name) => t.objectStore(name).clear());
+  });
+}
+
 /* Exposto num único objecto global para não poluir o window. */
 const DB = {
-  uid,
-  openDB,
-  seedExercisesIfEmpty,
-  getExercises,
-  addExercise,
-  getSessions,
-  getSession,
-  getSetsBySession,
-  getWodsBySession,
-  saveSession,
-  deleteSession,
-  getBodyMetrics,
-  saveBodyMetric
+  uid: uid,
+  openDB: openDB,
+  seedExercisesIfEmpty: seedExercisesIfEmpty,
+  getExercises: getExercises,
+  addExercise: addExercise,
+  deleteExercise: deleteExercise,
+  countSetsForExercise: countSetsForExercise,
+  getSessions: getSessions,
+  getSession: getSession,
+  getSetsBySession: getSetsBySession,
+  getWodsBySession: getWodsBySession,
+  getAllSets: getAllSets,
+  getAllWods: getAllWods,
+  saveSession: saveSession,
+  deleteSession: deleteSession,
+  getBodyMetrics: getBodyMetrics,
+  getBodyMetric: getBodyMetric,
+  saveBodyMetric: saveBodyMetric,
+  deleteBodyMetric: deleteBodyMetric,
+  getSetting: getSetting,
+  setSetting: setSetting,
+  exportAll: exportAll,
+  importAll: importAll,
+  clearAllData: clearAllData
 };
