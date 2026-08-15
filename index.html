@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171C">
+<title>Registo de Treino</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<main id="app">
+
+  <!-- ============ SEPARADOR: TREINO ============ -->
+  <section class="view" id="view-treino" data-view="treino">
+    <header class="topbar">
+      <h1>Treino</h1>
+      <button class="btn-primary" id="btn-new-session">Nova sessão</button>
+    </header>
+
+    <div id="session-list" class="list"></div>
+
+    <p class="empty" id="empty-sessions" hidden>
+      Ainda não há sessões.<br>Regista a primeira em <strong>Nova sessão</strong>.
+    </p>
+  </section>
+
+  <!-- ============ SEPARADOR: CORPO ============ -->
+  <section class="view" id="view-corpo" data-view="corpo" hidden>
+    <header class="topbar"><h1>Corpo</h1></header>
+    <p class="empty">Pesagem e medidas de sexta-feira.<br>Chega na próxima etapa.</p>
+  </section>
+
+  <!-- ============ SEPARADOR: EVOLUÇÃO ============ -->
+  <section class="view" id="view-evolucao" data-view="evolucao" hidden>
+    <header class="topbar"><h1>Evolução</h1></header>
+    <p class="empty">Gráficos de carga, peso e volume.<br>Chegam depois de haver dados para mostrar.</p>
+  </section>
+
+  <!-- ============ SEPARADOR: DEFINIÇÕES ============ -->
+  <section class="view" id="view-definicoes" data-view="definicoes" hidden>
+    <header class="topbar"><h1>Definições</h1></header>
+    <p class="empty">Exportar, importar e gerir o catálogo.<br>Chegam na próxima etapa.</p>
+  </section>
+
+  <!-- ============ EDITOR DE SESSÃO (ecrã inteiro) ============ -->
+  <section class="view editor" id="view-editor" hidden>
+    <header class="topbar">
+      <button class="btn-ghost" id="btn-cancel">Cancelar</button>
+      <h1 id="editor-title">Nova sessão</h1>
+      <button class="btn-primary" id="btn-save">Guardar</button>
+    </header>
+
+    <div class="editor-body">
+
+      <label class="field">
+        <span class="label">Data</span>
+        <input type="date" id="f-date">
+      </label>
+
+      <!-- Bloco: métricas gerais -->
+      <details class="block" open>
+        <summary>Métricas</summary>
+        <div class="block-body">
+          <div class="row-3">
+            <label class="field">
+              <span class="label">Duração <em>min</em></span>
+              <input type="number" id="f-duration" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Calorias <em>kcal</em></span>
+              <input type="number" id="f-calories" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">FC média <em>bpm</em></span>
+              <input type="number" id="f-avghr" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <!-- Bloco: força -->
+      <details class="block" open>
+        <summary>Força</summary>
+        <div class="block-body">
+          <div id="groups"></div>
+
+          <div class="add-exercise">
+            <select id="f-exercise-pick">
+              <option value="">Adicionar exercício…</option>
+            </select>
+          </div>
+
+          <div class="new-exercise" id="new-exercise" hidden>
+            <input type="text" id="f-new-exercise-name" placeholder="Nome do movimento (inglês)">
+            <select id="f-new-exercise-cat">
+              <option value="barbell">barbell</option>
+              <option value="dumbbell">dumbbell</option>
+              <option value="gymnastics">gymnastics</option>
+              <option value="other">other</option>
+            </select>
+            <button class="btn-secondary" id="btn-create-exercise">Criar</button>
+          </div>
+        </div>
+      </details>
+
+      <!-- Bloco: WOD -->
+      <details class="block" open>
+        <summary>WOD</summary>
+        <div class="block-body">
+          <label class="field">
+            <span class="label">Nome</span>
+            <input type="text" id="f-wod-name" list="wod-names" placeholder="Fran, AMRAP 12, Chipper…" autocomplete="off">
+            <datalist id="wod-names"></datalist>
+          </label>
+
+          <div class="row-2">
+            <label class="field">
+              <span class="label">Formato</span>
+              <select id="f-wod-format">
+                <option value="forTime">For time</option>
+                <option value="amrap">AMRAP</option>
+                <option value="emom">EMOM</option>
+                <option value="other">Outro</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="label">Escala</span>
+              <select id="f-wod-scaling">
+                <option value="rx">Rx</option>
+                <option value="scaled">Scaled</option>
+              </select>
+            </label>
+          </div>
+
+          <!-- Resultado: só aparece o campo que faz sentido para o formato -->
+          <div class="row-2" id="wod-time-fields">
+            <label class="field">
+              <span class="label">Tempo <em>min</em></span>
+              <input type="number" id="f-wod-min" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Tempo <em>seg</em></span>
+              <input type="number" id="f-wod-sec" inputmode="numeric" min="0" max="59" step="1" placeholder="—">
+            </label>
+          </div>
+
+          <div class="row-2" id="wod-round-fields" hidden>
+            <label class="field">
+              <span class="label">Rondas</span>
+              <input type="number" id="f-wod-rounds" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Reps extra</span>
+              <input type="number" id="f-wod-extra" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+          </div>
+
+          <label class="field">
+            <span class="label">Carga <em>kg</em></span>
+            <input type="number" id="f-wod-weight" inputmode="decimal" min="0" step="0.5" placeholder="—">
+          </label>
+
+          <label class="field">
+            <span class="label">Descrição</span>
+            <textarea id="f-wod-desc" rows="3" placeholder="21-15-9 thrusters + pull-ups"></textarea>
+          </label>
+        </div>
+      </details>
+
+      <label class="field">
+        <span class="label">Notas da sessão</span>
+        <textarea id="f-notes" rows="2" placeholder="Como correu, o que doeu, o que ajustar"></textarea>
+      </label>
+
+      <button class="btn-danger" id="btn-delete" hidden>Apagar sessão</button>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ BARRA DE SEPARADORES ============ -->
+<nav class="tabbar" id="tabbar">
+  <button class="tab is-active" data-target="treino">Treino</button>
+  <button class="tab" data-target="corpo">Corpo</button>
+  <button class="tab" data-target="evolucao">Evolução</button>
+  <button class="tab" data-target="definicoes">Definições</button>
+</nav>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
