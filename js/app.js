@@ -627,19 +627,221 @@ function epley(weightKg, reps) {
   return weightKg * (1 + reps / 30);
 }
 
+let currentLens = 'sessoes';
+let currentPeriodDays = 90;
+
+/* Só recalcula a lente visível: os gráficos das outras não estão no ecrã
+ * e recalcular tudo a cada troca era trabalho deitado fora. */
 async function renderEvolution() {
-  const [sessions, allSets, allWods, body] = await Promise.all([
-    DB.getSessions(), DB.getAllSets(), DB.getAllWods(), DB.getBodyMetrics()
-  ]);
+  document.querySelectorAll('[data-lens-panel]').forEach((p) => {
+    p.hidden = p.dataset.lensPanel !== currentLens;
+  });
+  document.querySelectorAll('#lens-picker .seg').forEach((b) => {
+    b.classList.toggle('is-active', b.dataset.lens === currentLens);
+  });
 
-  const dateBySession = {};
-  sessions.forEach((s) => { dateBySession[s.id] = s.date; });
+  if (currentLens === 'sessoes') {
+    const sessions = await DB.getSessions();
+    renderSessionsLens(sessions);
+    return;
+  }
 
-  renderStrengthSection(allSets, dateBySession);
+  if (currentLens === 'forca') {
+    const [sessions, allSets, allWods] = await Promise.all([
+      DB.getSessions(), DB.getAllSets(), DB.getAllWods()
+    ]);
+    const dateBySession = {};
+    sessions.forEach((s) => { dateBySession[s.id] = s.date; });
+    renderStrengthSection(allSets, dateBySession);
+    renderVolumeSection(allSets, dateBySession);
+    renderWodSection(allWods, dateBySession);
+    return;
+  }
+
+  const body = await DB.getBodyMetrics();
   renderWeightSection(body);
   renderMeasureSection(body);
-  renderVolumeSection(allSets, dateBySession);
-  renderWodSection(allWods, dateBySession);
+}
+
+/* ---------- Lente: sessões ---------- */
+
+function renderSessionsLens(allSessions) {
+  document.querySelectorAll('#period-picker .seg').forEach((b) => {
+    b.classList.toggle('is-active', Number(b.dataset.days) === currentPeriodDays);
+  });
+
+  // Ordem crescente: os gráficos leem-se da esquerda para a direita.
+  const inPeriod = filterByPeriod(allSessions, currentPeriodDays)
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  renderSessionTiles(allSessions, inPeriod);
+  renderPerWeekChart(inPeriod);
+  renderWeekdayChart(inPeriod);
+
+  renderMetricChart('#chart-duration', inPeriod, 'durationMin',
+    (v) => Math.round(v) + ' min', 'var(--load)');
+  renderMetricChart('#chart-calories', inPeriod, 'calories',
+    (v) => Math.round(v) + ' kcal', 'var(--load)');
+  renderMetricChart('#chart-hr', inPeriod, 'avgHr',
+    (v) => Math.round(v) + ' bpm', 'var(--oxide)');
+
+  renderMonthTable(allSessions);
+}
+
+/* days = 0 significa "tudo". */
+function filterByPeriod(sessions, days) {
+  if (!days) return sessions;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffISO = isoOf(cutoff);
+  return sessions.filter((s) => s.date >= cutoffISO);
+}
+
+function average(values) {
+  if (!values.length) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+function renderSessionTiles(allSessions, inPeriod) {
+  const host = $('#session-tiles');
+  host.innerHTML = '';
+
+  const durations = inPeriod.filter((s) => s.durationMin).map((s) => s.durationMin);
+  const calories = inPeriod.filter((s) => s.calories).map((s) => s.calories);
+  const hrs = inPeriod.filter((s) => s.avgHr).map((s) => s.avgHr);
+
+  // Semanas cobertas pelo período, para a média por semana não mentir
+  // quando ainda há pouco histórico.
+  let weeks;
+  if (currentPeriodDays) {
+    weeks = currentPeriodDays / 7;
+  } else if (allSessions.length) {
+    const first = new Date(allSessions[allSessions.length - 1].date + 'T00:00:00');
+    weeks = Math.max(1, (Date.now() - first.getTime()) / (7 * 86400000));
+  } else {
+    weeks = 1;
+  }
+
+  // Intensidade: calorias por minuto, só nas sessões que têm os dois campos.
+  const withBoth = inPeriod.filter((s) => s.calories && s.durationMin);
+  const kcalMin = withBoth.length
+    ? average(withBoth.map((s) => s.calories / s.durationMin))
+    : null;
+
+  let sinceLast = null;
+  if (allSessions.length) {
+    const lastDate = new Date(allSessions[0].date + 'T00:00:00');
+    sinceLast = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+  }
+
+  const tiles = [
+    ['Sessões', String(inPeriod.length), 'no período'],
+    ['Por semana', (inPeriod.length / weeks).toFixed(1), 'média'],
+    ['Duração', durations.length ? Math.round(average(durations)) : '—', 'min em média'],
+    ['Calorias', calories.length ? Math.round(average(calories)) : '—', 'kcal em média'],
+    ['FC média', hrs.length ? Math.round(average(hrs)) : '—', 'bpm'],
+    ['Intensidade', kcalMin != null ? kcalMin.toFixed(1) : '—', 'kcal/min'],
+    ['Último treino', sinceLast == null ? '—' : (sinceLast === 0 ? 'hoje' : sinceLast), sinceLast > 0 ? 'dias atrás' : '']
+  ];
+
+  tiles.forEach(([label, value, unit]) => {
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.innerHTML =
+      '<span class="tile-label">' + label + '</span>' +
+      '<span class="tile-value">' + escapeHtml(String(value)) + '</span>' +
+      '<span class="tile-unit">' + escapeHtml(unit) + '</span>';
+    host.appendChild(tile);
+  });
+}
+
+function renderPerWeekChart(inPeriod) {
+  const byWeek = {};
+  inPeriod.forEach((s) => {
+    const k = weekKey(s.date);
+    byWeek[k] = (byWeek[k] || 0) + 1;
+  });
+
+  // Preenche as semanas sem treino: um buraco no gráfico diz mais
+  // do que duas barras encostadas a fingir continuidade.
+  const keys = Object.keys(byWeek).sort();
+  const bars = [];
+  if (keys.length) {
+    const all = weekRange(inPeriod[0].date, inPeriod[inPeriod.length - 1].date);
+    all.forEach((k) => bars.push({ label: k.slice(5), value: byWeek[k] || 0 }));
+  }
+
+  Chart.bar($('#chart-perweek'), bars.slice(-26), { format: (v) => v.toFixed(0) + ' treinos' });
+}
+
+/* Todas as chaves de semana entre duas datas, inclusive. */
+function weekRange(startISO, endISO) {
+  const out = [];
+  const d = new Date(startISO + 'T00:00:00');
+  const end = new Date(endISO + 'T00:00:00');
+  const seen = {};
+  while (d <= end) {
+    const k = weekKey(isoOf(d));
+    if (!seen[k]) { seen[k] = true; out.push(k); }
+    d.setDate(d.getDate() + 7);
+  }
+  const lastK = weekKey(endISO);
+  if (!seen[lastK]) out.push(lastK);
+  return out;
+}
+
+function renderWeekdayChart(inPeriod) {
+  const names = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+  const counts = [0, 0, 0, 0, 0, 0, 0];
+  inPeriod.forEach((s) => {
+    const d = new Date(s.date + 'T00:00:00');
+    counts[(d.getDay() + 6) % 7] += 1;   // segunda = 0
+  });
+
+  const bars = names.map((n, i) => ({ label: n, value: counts[i] }));
+  Chart.bar($('#chart-weekday'), bars, { format: (v) => v.toFixed(0) + ' treinos', allLabels: true });
+}
+
+function renderMetricChart(selector, inPeriod, field, format, color) {
+  const points = inPeriod
+    .filter((s) => s[field] != null && s[field] > 0)
+    .map((s) => ({ x: s.date, y: s[field] }));
+  Chart.line($(selector), points, { format: format, color: color });
+}
+
+function renderMonthTable(allSessions) {
+  const byMonth = {};
+  allSessions.forEach((s) => {
+    const key = s.date.slice(0, 7);
+    if (!byMonth[key]) byMonth[key] = { n: 0, dur: [], cal: [], hr: [] };
+    byMonth[key].n += 1;
+    if (s.durationMin) byMonth[key].dur.push(s.durationMin);
+    if (s.calories) byMonth[key].cal.push(s.calories);
+    if (s.avgHr) byMonth[key].hr.push(s.avgHr);
+  });
+
+  const tbody = $('#month-table').querySelector('tbody');
+  tbody.innerHTML = '';
+
+  const keys = Object.keys(byMonth).sort().reverse().slice(0, 12);
+  if (!keys.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Sem sessões registadas.</td></tr>';
+    return;
+  }
+
+  keys.forEach((key) => {
+    const m = byMonth[key];
+    const [y, mm] = key.split('-');
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + MONTHS_PT[Number(mm) - 1] + ' ' + y.slice(2) + '</td>' +
+      '<td>' + m.n + '</td>' +
+      '<td>' + (m.dur.length ? Math.round(average(m.dur)) : '—') + '</td>' +
+      '<td>' + (m.cal.length ? Math.round(average(m.cal)) : '—') + '</td>' +
+      '<td>' + (m.hr.length ? Math.round(average(m.hr)) : '—') + '</td>';
+    tbody.appendChild(tr);
+  });
 }
 
 function renderStrengthSection(allSets, dateBySession) {
@@ -1072,6 +1274,20 @@ function bindEvents() {
   $('#ev-exercise').addEventListener('change', renderEvolution);
   $('#ev-measure').addEventListener('change', renderEvolution);
   $('#ev-wod').addEventListener('change', renderEvolution);
+
+  document.querySelectorAll('#lens-picker .seg').forEach((b) => {
+    b.addEventListener('click', () => {
+      currentLens = b.dataset.lens;
+      renderEvolution();
+    });
+  });
+
+  document.querySelectorAll('#period-picker .seg').forEach((b) => {
+    b.addEventListener('click', () => {
+      currentPeriodDays = Number(b.dataset.days);
+      renderEvolution();
+    });
+  });
 
   // Definições
   $('#btn-export-json').addEventListener('click', exportJSON);

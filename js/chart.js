@@ -146,22 +146,42 @@ function renderBarChart(host, bars, opts) {
     }));
   });
 
-  const firstLabel = svgEl('text', { x: PAD_L, y: CHART_H - 7, class: 'chart-axis' });
-  firstLabel.textContent = bars[0].label;
-  svg.appendChild(firstLabel);
+  // Com poucas barras cabem todas as etiquetas (dias da semana);
+  // com muitas, só a primeira e a última, senão sobrepõem-se.
+  if (opts.allLabels) {
+    bars.forEach((b, i) => {
+      const t = svgEl('text', {
+        x: PAD_L + i * slot + slot / 2,
+        y: CHART_H - 7,
+        class: 'chart-axis',
+        'text-anchor': 'middle'
+      });
+      t.textContent = b.label;
+      svg.appendChild(t);
+    });
+  } else {
+    const firstLabel = svgEl('text', { x: PAD_L, y: CHART_H - 7, class: 'chart-axis' });
+    firstLabel.textContent = bars[0].label;
+    svg.appendChild(firstLabel);
 
-  if (bars.length > 1) {
-    const lastLabel = svgEl('text', { x: CHART_W - PAD_R, y: CHART_H - 7, class: 'chart-axis', 'text-anchor': 'end' });
-    lastLabel.textContent = bars[bars.length - 1].label;
-    svg.appendChild(lastLabel);
+    if (bars.length > 1) {
+      const lastLabel = svgEl('text', { x: CHART_W - PAD_R, y: CHART_H - 7, class: 'chart-axis', 'text-anchor': 'end' });
+      lastLabel.textContent = bars[bars.length - 1].label;
+      svg.appendChild(lastLabel);
+    }
   }
 
   host.appendChild(svg);
 
-  const caption = document.createElement('p');
-  caption.className = 'chart-caption';
-  caption.textContent = 'Última: ' + fmt(bars[bars.length - 1].value);
-  host.appendChild(caption);
+  if (opts.caption !== false) {
+    const caption = document.createElement('p');
+    caption.className = 'chart-caption';
+    const total = bars.reduce((a, b) => a + b.value, 0);
+    caption.textContent = opts.allLabels
+      ? 'Total: ' + fmt(total)
+      : 'Última: ' + fmt(bars[bars.length - 1].value);
+    host.appendChild(caption);
+  }
 }
 
 function shortDate(iso) {

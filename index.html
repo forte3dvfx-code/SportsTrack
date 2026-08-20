@@ -49,47 +49,112 @@
   <section class="view" id="view-evolucao" data-view="evolucao" hidden>
     <header class="topbar"><h1>Evolução</h1></header>
 
-    <section class="panel">
-      <h2>Força</h2>
-      <select id="ev-exercise" aria-label="Movimento a analisar"></select>
-      <div id="chart-strength" class="chart-host"></div>
-      <p class="hint">
-        A linha é o 1RM estimado pela fórmula de Epley, para tornar comparáveis
-        séries com repetições diferentes. Acima das 10 repetições sobrestima.
-      </p>
-      <div id="strength-prs" class="pr-list"></div>
-    </section>
+    <!-- Três lentes sobre os mesmos dados, para não haver um scroll infinito -->
+    <div class="segmented" id="lens-picker" role="tablist">
+      <button class="seg is-active" data-lens="sessoes" role="tab">Sessões</button>
+      <button class="seg" data-lens="forca" role="tab">Força</button>
+      <button class="seg" data-lens="corpo" role="tab">Corpo</button>
+    </div>
 
-    <section class="panel">
-      <h2>Peso corporal</h2>
-      <div id="chart-weight" class="chart-host"></div>
-    </section>
+    <!-- ---------- LENTE: SESSÕES ---------- -->
+    <div data-lens-panel="sessoes">
 
-    <section class="panel">
-      <h2>Medidas</h2>
-      <select id="ev-measure" aria-label="Medida a analisar">
-        <option value="waist">Cintura</option>
-        <option value="hip">Anca</option>
-        <option value="chest">Peito</option>
-        <option value="armR">Braço direito</option>
-        <option value="thighR">Coxa direita</option>
-        <option value="neck">Pescoço</option>
-      </select>
-      <div id="chart-measure" class="chart-host"></div>
-    </section>
+      <div class="segmented small" id="period-picker">
+        <button class="seg" data-days="30">30 dias</button>
+        <button class="seg is-active" data-days="90">90 dias</button>
+        <button class="seg" data-days="365">1 ano</button>
+        <button class="seg" data-days="0">Tudo</button>
+      </div>
 
-    <section class="panel">
-      <h2>Volume semanal</h2>
-      <div id="chart-volume" class="chart-host"></div>
-      <p class="hint">Soma de repetições × carga das séries de trabalho, últimas 12 semanas.</p>
-    </section>
+      <div class="tiles" id="session-tiles"></div>
 
-    <section class="panel">
-      <h2>WOD</h2>
-      <select id="ev-wod" aria-label="WOD a analisar"></select>
-      <div id="chart-wod" class="chart-host"></div>
-      <p class="hint" id="wod-hint"></p>
-    </section>
+      <section class="panel">
+        <h2>Treinos por semana</h2>
+        <div id="chart-perweek" class="chart-host"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Por dia da semana</h2>
+        <div id="chart-weekday" class="chart-host"></div>
+        <p class="hint">Contagem de sessões em cada dia, dentro do período escolhido.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Duração por sessão</h2>
+        <div id="chart-duration" class="chart-host"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Calorias por sessão</h2>
+        <div id="chart-calories" class="chart-host"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Frequência cardíaca média</h2>
+        <div id="chart-hr" class="chart-host"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Mês a mês</h2>
+        <div class="table-wrap">
+          <table class="data-table" id="month-table">
+            <thead>
+              <tr><th>Mês</th><th>N.º</th><th>Duração</th><th>kcal</th><th>bpm</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint">Médias por sessão. Só contam sessões com o campo preenchido.</p>
+      </section>
+    </div>
+
+    <!-- ---------- LENTE: FORÇA ---------- -->
+    <div data-lens-panel="forca" hidden>
+      <section class="panel">
+        <h2>Progressão de carga</h2>
+        <select id="ev-exercise" aria-label="Movimento a analisar"></select>
+        <div id="chart-strength" class="chart-host"></div>
+        <p class="hint">
+          A linha é o 1RM estimado pela fórmula de Epley, para tornar comparáveis
+          séries com repetições diferentes. Acima das 10 repetições sobrestima.
+        </p>
+        <div id="strength-prs" class="pr-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Volume semanal</h2>
+        <div id="chart-volume" class="chart-host"></div>
+        <p class="hint">Soma de repetições × carga das séries de trabalho, últimas 12 semanas.</p>
+      </section>
+
+      <section class="panel">
+        <h2>WOD</h2>
+        <select id="ev-wod" aria-label="WOD a analisar"></select>
+        <div id="chart-wod" class="chart-host"></div>
+        <p class="hint" id="wod-hint"></p>
+      </section>
+    </div>
+
+    <!-- ---------- LENTE: CORPO ---------- -->
+    <div data-lens-panel="corpo" hidden>
+      <section class="panel">
+        <h2>Peso corporal</h2>
+        <div id="chart-weight" class="chart-host"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Medidas</h2>
+        <select id="ev-measure" aria-label="Medida a analisar">
+          <option value="waist">Cintura</option>
+          <option value="hip">Anca</option>
+          <option value="chest">Peito</option>
+          <option value="armR">Braço direito</option>
+          <option value="thighR">Coxa direita</option>
+          <option value="neck">Pescoço</option>
+        </select>
+        <div id="chart-measure" class="chart-host"></div>
+      </section>
+    </div>
   </section>
 
   <!-- ============ SEPARADOR: DEFINIÇÕES ============ -->
