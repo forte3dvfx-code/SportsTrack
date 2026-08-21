@@ -2,7 +2,7 @@
  * IMPORTANTE: sempre que alterares qualquer ficheiro desta lista,
  * incrementa CACHE_NAME (v1 -> v2) ou o browser continua a servir o antigo. */
 
-const CACHE_NAME = 'treino-v3';
+const CACHE_NAME = 'treino-v4';
 
 const SHELL = [
   './',

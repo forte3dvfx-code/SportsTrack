@@ -131,7 +131,13 @@ function buildCard({ session, sets, wods }) {
   const working = sets.filter((s) => !s.warmup);
   const best = {};
   working.forEach((s) => {
-    if (!best[s.exerciseId] || s.weightKg > best[s.exerciseId].weightKg) best[s.exerciseId] = s;
+    const current = best[s.exerciseId];
+    if (!current) { best[s.exerciseId] = s; return; }
+    // Sem carga, a melhor série é a de mais repetições; com carga, a mais pesada.
+    const better = (s.weightKg > 0 || current.weightKg > 0)
+      ? s.weightKg > current.weightKg
+      : s.reps > current.reps;
+    if (better) best[s.exerciseId] = s;
   });
   const bestList = Object.keys(best);
 
@@ -140,8 +146,11 @@ function buildCard({ session, sets, wods }) {
     el.className = 'card-lifts';
     bestList.slice(0, 3).forEach((exId) => {
       const s = best[exId];
+      const detail = s.weightKg > 0
+        ? '<b>' + s.weightKg + '</b> × ' + s.reps
+        : '<b>' + s.reps + '</b> reps';
       const line = document.createElement('div');
-      line.innerHTML = escapeHtml(exerciseName(exId)) + '  <b>' + s.weightKg + '</b> × ' + s.reps;
+      line.innerHTML = escapeHtml(exerciseName(exId)) + '  ' + detail;
       el.appendChild(line);
     });
     if (bestList.length > 3) {
@@ -846,11 +855,14 @@ function renderMonthTable(allSessions) {
 
 function renderStrengthSection(allSets, dateBySession) {
   const select = $('#ev-exercise');
-  const working = allSets.filter((s) => !s.warmup && s.weightKg > 0 && s.reps > 0);
 
-  // Só entram no selector movimentos com carga registada.
+  // Antes exigia-se carga > 0, o que deixava de fora tudo o que é peso
+  // corporal. Agora basta haver repetições; o tipo de gráfico decide-se
+  // por movimento, mais abaixo.
+  const working = allSets.filter((s) => !s.warmup && s.reps > 0);
+
   const used = {};
-  working.forEach((s) => { used[s.exerciseId] = (used[s.exerciseId] || 0) + 1; });
+  working.forEach((s) => { used[s.exerciseId] = true; });
   const ids = Object.keys(used).sort((a, b) => exerciseName(a).localeCompare(exerciseName(b), 'en'));
 
   const previous = select.value;
@@ -865,18 +877,31 @@ function renderStrengthSection(allSets, dateBySession) {
 
   if (!ids.length) {
     select.hidden = true;
-    $('#chart-strength').innerHTML = '<p class="chart-empty">Regista séries com carga para ver a evolução.</p>';
+    $('#chart-strength').innerHTML = '<p class="chart-empty">Regista séries de força para ver a evolução.</p>';
     $('#strength-prs').innerHTML = '';
+    $('#strength-hint').textContent = '';
     return;
   }
   select.hidden = false;
 
   const chosen = select.value || ids[0];
   const mine = working.filter((s) => s.exerciseId === chosen);
+  const loaded = mine.filter((s) => s.weightKg > 0);
 
-  // Melhor 1RM estimado de cada dia — uma sessão dá um ponto, não cinco.
+  // Decisão por dados, não por categoria: um movimento que nunca teve carga
+  // registada é tratado como peso corporal. Assim apanha ginástica, mas
+  // também box jumps ou GHD sit-ups, que estão noutra categoria.
+  if (!loaded.length) {
+    renderBodyweightProgress(mine, dateBySession);
+  } else {
+    renderLoadedProgress(loaded, mine.length - loaded.length, dateBySession);
+  }
+}
+
+/* Movimentos com carga: 1RM estimado, escala em kg. */
+function renderLoadedProgress(loaded, ignoredCount, dateBySession) {
   const bestByDate = {};
-  mine.forEach((s) => {
+  loaded.forEach((s) => {
     const date = dateBySession[s.sessionId];
     if (!date) return;
     const e = epley(s.weightKg, s.reps);
@@ -890,18 +915,66 @@ function renderStrengthSection(allSets, dateBySession) {
 
   Chart.line($('#chart-strength'), points, { format: (v) => v.toFixed(1) + ' kg' });
 
-  // Recordes reais, não estimados
-  const heaviest = mine.slice().sort((a, b) => b.weightKg - a.weightKg)[0];
-  const bestVolumeSet = mine.slice().sort((a, b) => (b.reps * b.weightKg) - (a.reps * a.weightKg))[0];
-  const bestEpley = mine.slice().sort((a, b) => epley(b.weightKg, b.reps) - epley(a.weightKg, a.reps))[0];
+  let hint = 'A linha é o 1RM estimado pela fórmula de Epley, para tornar ' +
+    'comparáveis séries com repetições diferentes. Acima das 10 repetições sobrestima.';
+  if (ignoredCount > 0) {
+    // Movimento misto (com e sem colete, por exemplo): as séries sem carga
+    // ficam de fora porque um zero afundava a linha.
+    hint += ' ' + ignoredCount + (ignoredCount === 1 ? ' série sem carga ficou' : ' séries sem carga ficaram') +
+      ' de fora. Se fazes este movimento com e sem peso, cria duas entradas no catálogo.';
+  }
+  $('#strength-hint').textContent = hint;
 
-  const prs = $('#strength-prs');
-  prs.innerHTML = '';
-  [
+  const heaviest = loaded.slice().sort((a, b) => b.weightKg - a.weightKg)[0];
+  const bestVolumeSet = loaded.slice().sort((a, b) => (b.reps * b.weightKg) - (a.reps * a.weightKg))[0];
+  const bestEpley = loaded.slice().sort((a, b) => epley(b.weightKg, b.reps) - epley(a.weightKg, a.reps))[0];
+
+  fillPrList([
     ['Série mais pesada', heaviest.weightKg + ' kg × ' + heaviest.reps, dateBySession[heaviest.sessionId]],
     ['Melhor 1RM estimado', epley(bestEpley.weightKg, bestEpley.reps).toFixed(1) + ' kg', dateBySession[bestEpley.sessionId]],
-    ['Série de maior volume', (bestVolumeSet.reps * bestVolumeSet.weightKg) + ' kg', dateBySession[bestVolumeSet.sessionId]]
-  ].forEach(([label, value, date]) => {
+    ['Série de maior volume', (bestVolumeSet.reps * bestVolumeSet.weightKg).toFixed(0) + ' kg', dateBySession[bestVolumeSet.sessionId]]
+  ]);
+}
+
+/* Movimentos de peso corporal: a melhor série de cada dia, escala em repetições. */
+function renderBodyweightProgress(mine, dateBySession) {
+  const byDate = {};
+  mine.forEach((s) => {
+    const date = dateBySession[s.sessionId];
+    if (!date) return;
+    if (!byDate[date]) byDate[date] = { best: 0, total: 0, sets: 0 };
+    byDate[date].best = Math.max(byDate[date].best, s.reps);
+    byDate[date].total += s.reps;
+    byDate[date].sets += 1;
+  });
+
+  const dates = Object.keys(byDate).sort();
+  const points = dates.map((date) => ({ x: date, y: byDate[date].best }));
+
+  Chart.line($('#chart-strength'), points, {
+    format: (v) => Math.round(v) + ' reps'
+  });
+
+  $('#strength-hint').textContent =
+    'Movimento sem carga registada, por isso a linha é o melhor número de ' +
+    'repetições numa série de cada dia. Se começares a usar colete, regista o ' +
+    'peso e o gráfico passa sozinho para quilos.';
+
+  const bestSet = mine.slice().sort((a, b) => b.reps - a.reps)[0];
+  const bestTotal = dates.slice().sort((a, b) => byDate[b].total - byDate[a].total)[0];
+  const mostSets = dates.slice().sort((a, b) => byDate[b].sets - byDate[a].sets)[0];
+
+  fillPrList([
+    ['Melhor série', bestSet.reps + ' reps', dateBySession[bestSet.sessionId]],
+    ['Mais repetições num dia', byDate[bestTotal].total + ' reps', bestTotal],
+    ['Mais séries num dia', byDate[mostSets].sets + ' séries', mostSets]
+  ]);
+}
+
+function fillPrList(rows) {
+  const prs = $('#strength-prs');
+  prs.innerHTML = '';
+  rows.forEach(([label, value, date]) => {
     const row = document.createElement('div');
     row.className = 'pr-row';
     row.innerHTML = '<span class="pr-label">' + label + '</span>' +
