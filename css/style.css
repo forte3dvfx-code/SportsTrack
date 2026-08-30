@@ -831,3 +831,9 @@ button:disabled {
   line-height: 1.5;
   color: var(--ink-dim);
 }
+
+/* Tentativa que bateu no tempo limite */
+.data-table td.capped { color: var(--oxide); }
+
+/* Seletor de resultado dentro do editor */
+#wod-outcome { margin-bottom: 0; }

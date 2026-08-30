@@ -26,6 +26,7 @@ let exercises = [];          // catálogo carregado uma vez
 let exercisesById = {};      // atalho id -> registo
 let wodNamesSeen = [];       // alimenta o autocompletar de nomes de WOD
 
+let wodOutcome = 'finished'; // 'finished' | 'capped', escolhido no editor
 let editor = null;           // estado do editor de sessão
 let bodyEditor = null;       // estado do editor de medição
 
@@ -183,7 +184,7 @@ function buildCard({ session, sets, wods }) {
     el.className = 'card-wod';
     el.innerHTML = '<strong>' + escapeHtml(w.name || 'WOD') + '</strong>' +
       (wodResult(w) ? ' · ' + escapeHtml(wodResult(w)) : '') +
-      ' · ' + (w.scaling === 'rx' ? 'Rx' : 'Scaled');
+      ' · ' + scalingLabel(w);
     main.appendChild(el);
   }
 
@@ -213,9 +214,19 @@ function exerciseName(id) {
   return exercisesById[id] ? exercisesById[id].name : 'Movimento removido';
 }
 
+const SCALING_LABELS = { rxplus: 'Rx+', rx: 'Rx', scaled: 'Scaled' };
+
+function scalingLabel(w) {
+  return SCALING_LABELS[w.scaling] || 'Scaled';
+}
+
 function wodResult(w) {
   if (w.format === 'amrap' && w.rounds != null) {
     return w.rounds + (w.extraReps ? '+' + w.extraReps : '') + ' rondas';
+  }
+  if (w.finished === false) {
+    const cap = w.capMin != null ? 'CAP ' + w.capMin + ':00' : 'CAP';
+    return cap + (w.repsDone != null ? ' · ' + w.repsDone + ' reps' : '');
   }
   if (w.timeSec != null) {
     const min = Math.floor(w.timeSec / 60);
@@ -256,13 +267,20 @@ async function openEditor(sessionId) {
   const w = wods[0] || null;
   $('#f-wod-name').value = w ? (w.name || '') : '';
   $('#f-wod-format').value = w ? w.format : 'forTime';
-  $('#f-wod-scaling').value = w ? w.scaling : 'rx';
+  $('#f-wod-scaling').value = w ? (w.scaling || 'rx') : 'rx';
   $('#f-wod-min').value = w && w.timeSec != null ? Math.floor(w.timeSec / 60) : '';
   $('#f-wod-sec').value = w && w.timeSec != null ? w.timeSec % 60 : '';
   $('#f-wod-rounds').value = w && w.rounds != null ? w.rounds : '';
   $('#f-wod-extra').value = w && w.extraReps != null ? w.extraReps : '';
   $('#f-wod-weight').value = w && w.weightKg != null ? w.weightKg : '';
+  $('#f-wod-cap').value = w && w.capMin != null ? w.capMin : '';
+  $('#f-wod-repsdone').value = w && w.repsDone != null ? w.repsDone : '';
   $('#f-wod-desc').value = w ? (w.description || '') : '';
+
+  // WODs gravados antes deste campo existir contam como concluídos:
+  // se tinham tempo registado, é porque acabaram.
+  wodOutcome = (w && w.finished === false) ? 'capped' : 'finished';
+  setWodOutcome(wodOutcome);
 
   refreshWodFields();
   fillWodNames();
@@ -304,10 +322,25 @@ function fillWodNames() {
   });
 }
 
+function setWodOutcome(value) {
+  wodOutcome = value;
+  document.querySelectorAll('#wod-outcome .seg').forEach((b) => {
+    b.classList.toggle('is-active', b.dataset.outcome === value);
+  });
+  refreshWodFields();
+}
+
 function refreshWodFields() {
   const format = $('#f-wod-format').value;
-  $('#wod-time-fields').hidden = (format === 'amrap');
-  $('#wod-round-fields').hidden = (format !== 'amrap');
+  const isAmrap = (format === 'amrap');
+  const capped = (wodOutcome === 'capped');
+
+  // Num AMRAP não se bate no tempo: o tempo é fixo e o resultado são rondas.
+  $('#wod-outcome-field').hidden = isAmrap;
+  $('#wod-round-fields').hidden = !isAmrap;
+  $('#wod-time-fields').hidden = isAmrap || capped;
+  $('#wod-reps-field').hidden = isAmrap || !capped;
+  $('#wod-cap-field').hidden = isAmrap;
 }
 
 function renderGroups() {
@@ -467,18 +500,28 @@ async function saveEditor() {
   const wodDesc = $('#f-wod-desc').value.trim();
   if (wodName || wodDesc) {
     const format = $('#f-wod-format').value;
+    const isAmrap = (format === 'amrap');
+    const capped = !isAmrap && (wodOutcome === 'capped');
     const min = numOrNull($('#f-wod-min').value);
     const sec = numOrNull($('#f-wod-sec').value);
     const hasTime = min != null || sec != null;
+    const capMin = numOrNull($('#f-wod-cap').value);
 
     wods.push({
       id: DB.uid(),
       sessionId: session.id,
       name: wodName,
       format: format,
-      timeSec: (format !== 'amrap' && hasTime) ? ((min || 0) * 60 + (sec || 0)) : null,
-      rounds: format === 'amrap' ? numOrNull($('#f-wod-rounds').value) : null,
-      extraReps: format === 'amrap' ? numOrNull($('#f-wod-extra').value) : null,
+      // Quem bate no limite fica com o tempo do limite; o resultado real
+      // são as repetições feitas, guardadas em repsDone.
+      timeSec: isAmrap ? null
+        : capped ? (capMin != null ? capMin * 60 : null)
+        : (hasTime ? ((min || 0) * 60 + (sec || 0)) : null),
+      capMin: capMin,
+      finished: isAmrap ? true : !capped,
+      repsDone: capped ? numOrNull($('#f-wod-repsdone').value) : null,
+      rounds: isAmrap ? numOrNull($('#f-wod-rounds').value) : null,
+      extraReps: isAmrap ? numOrNull($('#f-wod-extra').value) : null,
       weightKg: numOrNull($('#f-wod-weight').value),
       scaling: $('#f-wod-scaling').value,
       description: wodDesc
@@ -669,6 +712,7 @@ async function renderEvolution() {
 
   if (currentLens === 'sessoes') {
     const sessions = await DB.getSessions();
+    await loadHrProfile();
     renderSessionsLens(sessions);
     return;
   }
@@ -683,9 +727,12 @@ async function renderEvolution() {
       dateBySession[s.id] = s.date;
       intentBySession[s.id] = s.intent || '';
     });
+    const sessionById = {};
+    sessions.forEach((s) => { sessionById[s.id] = s; });
+    await loadHrProfile();
     renderStrengthSection(allSets, dateBySession, intentBySession);
     renderVolumeSection(allSets, dateBySession);
-    renderWodSection(allWods, dateBySession);
+    renderWodSection(allWods, dateBySession, sessionById);
     return;
   }
 
@@ -946,6 +993,11 @@ function renderSessionTiles(allSessions, inPeriod) {
     ? average(withBoth.map((s) => s.calories / s.durationMin))
     : null;
 
+  const withHr = inPeriod.filter((s) => s.avgHr);
+  const avgPct = (withHr.length && hrProfile.maxHr)
+    ? average(withHr.map((s) => (s.avgHr / hrProfile.maxHr) * 100))
+    : null;
+
   let sinceLast = null;
   if (allSessions.length) {
     const lastDate = new Date(allSessions[0].date + 'T00:00:00');
@@ -957,7 +1009,7 @@ function renderSessionTiles(allSessions, inPeriod) {
     ['Por semana', (inPeriod.length / weeks).toFixed(1), 'média'],
     ['Duração', durations.length ? Math.round(average(durations)) : '—', 'min em média'],
     ['Calorias', calories.length ? Math.round(average(calories)) : '—', 'kcal em média'],
-    ['FC média', hrs.length ? Math.round(average(hrs)) : '—', 'bpm'],
+    ['FC média', hrs.length ? Math.round(average(hrs)) : '—', avgPct != null ? Math.round(avgPct) + '% da máx' : 'bpm'],
     ['Intensidade', kcalMin != null ? kcalMin.toFixed(1) : '—', 'kcal/min'],
     ['Último treino', sinceLast == null ? '—' : (sinceLast === 0 ? 'hoje' : sinceLast), sinceLast > 0 ? 'dias atrás' : '']
   ];
@@ -1421,9 +1473,50 @@ function renderVolumeSection(allSets, dateBySession) {
   });
 }
 
-function renderWodSection(allWods, dateBySession) {
+/* Perfil cardíaco, lido uma vez e guardado para os cálculos de intensidade. */
+let hrProfile = { maxHr: null, restHr: null, estimated: false };
+
+async function loadHrProfile() {
+  const maxHr = Number(await DB.getSetting('maxHr', 0)) || null;
+  const restHr = Number(await DB.getSetting('restingHr', 0)) || null;
+  const birthYear = Number(await DB.getSetting('birthYear', 0));
+
+  // Tanaka: 208 − 0,7 × idade. Mais fiável que o velho 220 − idade, mas
+  // continua a ser média populacional — o valor do Garmin é melhor.
+  let estimated = false;
+  let effectiveMax = maxHr;
+  if (!effectiveMax && birthYear) {
+    effectiveMax = Math.round(208 - 0.7 * (new Date().getFullYear() - birthYear));
+    estimated = true;
+  }
+
+  hrProfile = { maxHr: effectiveMax, restHr: restHr, estimated: estimated };
+  return hrProfile;
+}
+
+/* Percentagem da FC máxima. */
+function pctMaxHr(avgHr) {
+  if (!avgHr || !hrProfile.maxHr) return null;
+  return (avgHr / hrProfile.maxHr) * 100;
+}
+
+/* Percentagem da reserva cardíaca (Karvonen). Descontar a FC de repouso
+ * separa melhor sessões duras de sessões mornas do que a % da máxima. */
+function pctReserve(avgHr) {
+  if (!avgHr || !hrProfile.maxHr || !hrProfile.restHr) return null;
+  const denom = hrProfile.maxHr - hrProfile.restHr;
+  if (denom <= 0) return null;
+  return ((avgHr - hrProfile.restHr) / denom) * 100;
+}
+
+function kcalPerMin(session) {
+  if (!session || !session.calories || !session.durationMin) return null;
+  return session.calories / session.durationMin;
+}
+
+function renderWodSection(allWods, dateBySession, sessionById) {
   const select = $('#ev-wod');
-  const named = allWods.filter((w) => w.name && (w.timeSec != null || w.rounds != null));
+  const named = allWods.filter((w) => w.name);
 
   const names = Array.from(new Set(named.map((w) => w.name))).sort();
   const previous = select.value;
@@ -1436,34 +1529,97 @@ function renderWodSection(allWods, dateBySession) {
   });
   if (names.indexOf(previous) >= 0) select.value = previous;
 
+  const tbody = $('#wod-table').querySelector('tbody');
+
   if (!names.length) {
     select.hidden = true;
-    $('#chart-wod').innerHTML = '<p class="chart-empty">Repete um WOD com resultado para o comparares.</p>';
+    $('#chart-wod').innerHTML = '<p class="chart-empty">Regista um WOD com nome para o comparares.</p>';
     $('#wod-hint').textContent = '';
+    $('#wod-intensity-hint').textContent = '';
+    tbody.innerHTML = '';
     return;
   }
   select.hidden = false;
 
   const chosen = select.value || names[0];
-  const mine = named.filter((w) => w.name === chosen);
-  const isAmrap = mine.filter((w) => w.rounds != null).length > mine.length / 2;
+  const attempts = named
+    .filter((w) => w.name === chosen)
+    .map((w) => ({ wod: w, date: dateBySession[w.sessionId], session: sessionById[w.sessionId] }))
+    .filter((a) => a.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
-  const points = mine
-    .map((w) => ({
-      x: dateBySession[w.sessionId],
-      y: isAmrap ? w.rounds : w.timeSec
-    }))
-    .filter((p) => p.x && p.y != null)
-    .sort((a, b) => a.x.localeCompare(b.x));
+  const isAmrap = attempts.filter((a) => a.wod.format === 'amrap').length > attempts.length / 2;
+  const finished = attempts.filter((a) => a.wod.finished !== false && a.wod.timeSec != null);
+  const capped = attempts.filter((a) => a.wod.finished === false);
 
-  Chart.line($('#chart-wod'), points, {
-    format: (v) => isAmrap ? v.toFixed(0) + ' rondas' : fmtTime(v),
-    color: 'var(--oxide)'
+  // Tentativas concluídas e tentativas com cap não são a mesma moeda:
+  // um cap aos 12:00 não é "pior que 11:50", é outra coisa. A linha só
+  // usa as concluídas; as que bateram no limite aparecem na tabela.
+  if (isAmrap) {
+    const pts = attempts.filter((a) => a.wod.rounds != null)
+      .map((a) => ({ x: a.date, y: a.wod.rounds }));
+    Chart.line($('#chart-wod'), pts, { format: (v) => v.toFixed(0) + ' rondas', color: 'var(--oxide)' });
+    $('#wod-hint').textContent = 'Mais rondas é melhor.';
+  } else if (finished.length) {
+    const pts = finished.map((a) => ({ x: a.date, y: a.wod.timeSec }));
+    Chart.line($('#chart-wod'), pts, { format: (v) => fmtTime(v), color: 'var(--oxide)' });
+    $('#wod-hint').textContent = 'Só as tentativas concluídas entram na linha — menos tempo é melhor.' +
+      (capped.length ? ' ' + capped.length + (capped.length === 1 ? ' tentativa bateu' : ' tentativas bateram') +
+        ' no limite e está' + (capped.length === 1 ? '' : 'ão') + ' só na tabela.' : '');
+  } else if (capped.length) {
+    const pts = capped.filter((a) => a.wod.repsDone != null)
+      .map((a) => ({ x: a.date, y: a.wod.repsDone }));
+    Chart.line($('#chart-wod'), pts, { format: (v) => v.toFixed(0) + ' reps', color: 'var(--oxide)' });
+    $('#wod-hint').textContent = 'Nunca concluíste dentro do limite, por isso a linha são as repetições feitas.';
+  } else {
+    $('#chart-wod').innerHTML = '<p class="chart-empty">Sem resultados registados.</p>';
+    $('#wod-hint').textContent = '';
+  }
+
+  renderWodTable(attempts, tbody);
+}
+
+/* Tabela de tentativas: é aqui que o tempo se cruza com o esforço.
+ * Acabar três minutos mais rápido com menos % de FC máxima é uma melhoria
+ * muito maior do que acabar três minutos mais rápido a sofrer o mesmo. */
+function renderWodTable(attempts, tbody) {
+  tbody.innerHTML = '';
+
+  if (!attempts.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Sem tentativas.</td></tr>';
+    return;
+  }
+
+  attempts.slice().reverse().forEach((a) => {
+    const pct = pctMaxHr(a.session ? a.session.avgHr : null);
+    const kcal = kcalPerMin(a.session);
+    const capped = a.wod.finished === false;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + prettyDate(a.date) + '</td>' +
+      '<td' + (capped ? ' class="capped"' : '') + '>' + escapeHtml(wodResult(a.wod) || '—') + '</td>' +
+      '<td>' + scalingLabel(a.wod) + '</td>' +
+      '<td>' + (pct != null ? Math.round(pct) + '%' : '—') + '</td>' +
+      '<td>' + (kcal != null ? kcal.toFixed(1) : '—') + '</td>';
+    tbody.appendChild(tr);
   });
 
-  $('#wod-hint').textContent = isAmrap
-    ? 'Mais rondas é melhor.'
-    : 'Menos tempo é melhor — a linha deve descer.';
+  const withHr = attempts.filter((a) => a.session && a.session.avgHr);
+  if (!hrProfile.maxHr) {
+    $('#wod-intensity-hint').textContent =
+      'Preenche a FC máxima em Definições → Perfil (vais buscá-la ao Garmin) para ' +
+      'a coluna de esforço deixar de estar vazia.';
+  } else if (!withHr.length) {
+    $('#wod-intensity-hint').textContent =
+      'Regista a FC média e as calorias nas métricas da sessão para comparar esforço, não só tempo.';
+  } else {
+    $('#wod-intensity-hint').textContent =
+      '%FCmáx calculado sobre ' + hrProfile.maxHr + ' bpm' +
+      (hrProfile.estimated ? ' (estimado pela idade — mete o valor do Garmin para ser exacto)' : '') +
+      '. As calorias do relógio são estimativas com erro grande: servem para ' +
+      'comparar sessões parecidas entre si, não como valor absoluto.';
+  }
 }
 
 function fmtTime(sec) {
@@ -1506,7 +1662,16 @@ async function renderSettings() {
   $('#p-height').value = await DB.getSetting('heightCm', '') || '';
   $('#p-birthyear').value = await DB.getSetting('birthYear', '') || '';
   $('#p-sex').value = await DB.getSetting('sex', '') || '';
+  $('#p-maxhr').value = await DB.getSetting('maxHr', '') || '';
+  $('#p-resthr').value = await DB.getSetting('restingHr', '') || '';
   $('#p-weekly-target').value = String(weeklyTarget);
+
+  await loadHrProfile();
+  $('#hr-hint').textContent = hrProfile.maxHr
+    ? (hrProfile.estimated
+        ? 'A usar ' + hrProfile.maxHr + ' bpm, estimado pela tua idade. O Garmin dá-te o valor real — vale a pena substituir.'
+        : 'A usar ' + hrProfile.maxHr + ' bpm.' + (hrProfile.restHr ? '' : ' A FC de repouso é opcional, mas afina os cálculos de esforço.'))
+    : 'Vai buscar os dois valores ao Garmin Connect. Sem a FC máxima não há cálculo de esforço.';
 
   await renderDriveStatus();
   renderCatalog();
@@ -1741,10 +1906,12 @@ async function exportCSV(kind) {
       .filter((r) => r.date)
       .sort((a, b) => a.date.localeCompare(b.date));
     csv = toCSV(
-      ['data', 'nome', 'formato', 'tempo_seg', 'rondas', 'reps_extra', 'carga_kg', 'escala', 'descricao'],
+      ['data', 'nome', 'formato', 'tempo_seg', 'concluiu', 'cap_min', 'reps_feitas',
+       'rondas', 'reps_extra', 'carga_kg', 'escala', 'descricao'],
       rows.map((r) => [
-        r.date, r.w.name, r.w.format, r.w.timeSec, r.w.rounds,
-        r.w.extraReps, r.w.weightKg, r.w.scaling, r.w.description
+        r.date, r.w.name, r.w.format, r.w.timeSec,
+        r.w.finished === false ? 'nao' : 'sim', r.w.capMin, r.w.repsDone,
+        r.w.rounds, r.w.extraReps, r.w.weightKg, r.w.scaling, r.w.description
       ])
     );
   } else {
@@ -1802,6 +1969,10 @@ function bindEvents() {
   $('#btn-save').addEventListener('click', saveEditor);
   $('#btn-delete').addEventListener('click', removeSession);
   $('#f-wod-format').addEventListener('change', refreshWodFields);
+
+  document.querySelectorAll('#wod-outcome .seg').forEach((b) => {
+    b.addEventListener('click', () => setWodOutcome(b.dataset.outcome));
+  });
 
   $('#f-exercise-pick').addEventListener('change', (ev) => {
     const value = ev.target.value;
@@ -1889,6 +2060,14 @@ function bindEvents() {
     DB.setSetting('birthYear', numOrNull(ev.target.value)));
   $('#p-sex').addEventListener('change', (ev) =>
     DB.setSetting('sex', ev.target.value));
+  $('#p-maxhr').addEventListener('change', async (ev) => {
+    await DB.setSetting('maxHr', numOrNull(ev.target.value));
+    await renderSettings();
+  });
+  $('#p-resthr').addEventListener('change', async (ev) => {
+    await DB.setSetting('restingHr', numOrNull(ev.target.value));
+    await renderSettings();
+  });
   $('#p-weekly-target').addEventListener('change', async (ev) => {
     weeklyTarget = Number(ev.target.value);
     await DB.setSetting('weeklyTarget', weeklyTarget);

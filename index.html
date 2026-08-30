@@ -154,6 +154,15 @@
         <select id="ev-wod" aria-label="WOD a analisar"></select>
         <div id="chart-wod" class="chart-host"></div>
         <p class="hint" id="wod-hint"></p>
+        <div class="table-wrap">
+          <table class="data-table" id="wod-table">
+            <thead>
+              <tr><th>Data</th><th>Resultado</th><th>Escala</th><th>%FCmáx</th><th>kcal/min</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="wod-intensity-hint"></p>
       </section>
     </div>
 
@@ -259,6 +268,18 @@
           </select>
         </label>
       </div>
+      <div class="row-2">
+        <label class="field">
+          <span class="label">FC máxima <em>bpm</em></span>
+          <input type="number" id="p-maxhr" inputmode="numeric" min="0" step="1" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">FC repouso <em>bpm</em></span>
+          <input type="number" id="p-resthr" inputmode="numeric" min="0" step="1" placeholder="—">
+        </label>
+      </div>
+      <p class="hint" id="hr-hint"></p>
+
       <label class="field">
         <span class="label">Alvo de sessões por semana</span>
         <select id="p-weekly-target">
@@ -383,10 +404,24 @@
             <label class="field">
               <span class="label">Escala</span>
               <select id="f-wod-scaling">
+                <option value="rxplus">Rx+</option>
                 <option value="rx">Rx</option>
                 <option value="scaled">Scaled</option>
               </select>
             </label>
+          </div>
+
+          <label class="field" id="wod-cap-field">
+            <span class="label">Tempo limite <em>min, se houver</em></span>
+            <input type="number" id="f-wod-cap" inputmode="numeric" min="0" step="1" placeholder="—">
+          </label>
+
+          <div class="field" id="wod-outcome-field">
+            <span class="label">Resultado</span>
+            <div class="segmented small" id="wod-outcome">
+              <button type="button" class="seg is-active" data-outcome="finished">Concluí</button>
+              <button type="button" class="seg" data-outcome="capped">Bati no tempo</button>
+            </div>
           </div>
 
           <div class="row-2" id="wod-time-fields">
@@ -399,6 +434,11 @@
               <input type="number" id="f-wod-sec" inputmode="numeric" min="0" max="59" step="1" placeholder="—">
             </label>
           </div>
+
+          <label class="field" id="wod-reps-field" hidden>
+            <span class="label">Repetições feitas <em>até ao limite</em></span>
+            <input type="number" id="f-wod-repsdone" inputmode="numeric" min="0" step="1" placeholder="—">
+          </label>
 
           <div class="row-2" id="wod-round-fields" hidden>
             <label class="field">
