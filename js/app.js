@@ -9,6 +9,19 @@ const MEASURE_LABELS = {
   armR: 'Braço direito', thighR: 'Coxa direita', neck: 'Pescoço'
 };
 
+/* Intenção marcada à mão em cada sessão. É o que permite ler um dia leve
+ * como dia leve e não como regressão. Sessões antigas não têm o campo e
+ * ficam em 'por marcar', separadas das outras nas contas. */
+const INTENTS = {
+  leve:      { label: 'Leve',      color: '#6E8AA8' },
+  moderado:  { label: 'Moderado',  color: '#4A90D9' },
+  pesado:    { label: 'Pesado',    color: '#C2543E' },
+  teste:     { label: 'Teste PR',  color: '#E9E7E2' },
+  '':        { label: 'Por marcar', color: '#5C6675' }
+};
+
+const INTENT_ORDER = ['leve', 'moderado', 'pesado', 'teste', ''];
+
 let exercises = [];          // catálogo carregado uma vez
 let exercisesById = {};      // atalho id -> registo
 let wodNamesSeen = [];       // alimenta o autocompletar de nomes de WOD
@@ -25,11 +38,13 @@ async function init() {
   exercises = await DB.seedExercisesIfEmpty();
   indexExercises();
   fillExercisePicker();
+  weeklyTarget = Number(await DB.getSetting('weeklyTarget', 5));
   bindEvents();
   await renderSessionList();
   await renderBodyList();
   await refreshBackupState();
   registerServiceWorker();
+  maybeAutoBackup();   // não bloqueia o arranque: corre em segundo plano
 }
 
 function indexExercises() {
@@ -236,6 +251,7 @@ async function openEditor(sessionId) {
   $('#f-calories').value = session && session.calories != null ? session.calories : '';
   $('#f-avghr').value = session && session.avgHr != null ? session.avgHr : '';
   $('#f-notes').value = session ? (session.notes || '') : '';
+  $('#f-intent').value = session ? (session.intent || 'moderado') : 'moderado';
 
   const w = wods[0] || null;
   $('#f-wod-name').value = w ? (w.name || '') : '';
@@ -422,6 +438,7 @@ async function saveEditor() {
     calories: numOrNull($('#f-calories').value),
     avgHr: numOrNull($('#f-avghr').value),
     notes: $('#f-notes').value.trim(),
+    intent: $('#f-intent').value,
     source: 'manual',    // campo preparado para quando houver importação Garmin
     externalId: null,
     updatedAt: new Date().toISOString()
@@ -636,6 +653,7 @@ function epley(weightKg, reps) {
   return weightKg * (1 + reps / 30);
 }
 
+let weeklyTarget = 5;        // alvo de sessões por semana, editável em Definições
 let currentLens = 'sessoes';
 let currentPeriodDays = 90;
 
@@ -660,16 +678,23 @@ async function renderEvolution() {
       DB.getSessions(), DB.getAllSets(), DB.getAllWods()
     ]);
     const dateBySession = {};
-    sessions.forEach((s) => { dateBySession[s.id] = s.date; });
-    renderStrengthSection(allSets, dateBySession);
+    const intentBySession = {};
+    sessions.forEach((s) => {
+      dateBySession[s.id] = s.date;
+      intentBySession[s.id] = s.intent || '';
+    });
+    renderStrengthSection(allSets, dateBySession, intentBySession);
     renderVolumeSection(allSets, dateBySession);
     renderWodSection(allWods, dateBySession);
     return;
   }
 
-  const body = await DB.getBodyMetrics();
+  const [body, sessionsForBmr] = await Promise.all([
+    DB.getBodyMetrics(), DB.getSessions()
+  ]);
   renderWeightSection(body);
   renderMeasureSection(body);
+  await renderMetabolism(body, sessionsForBmr);
 }
 
 /* ---------- Lente: sessões ---------- */
@@ -685,17 +710,200 @@ function renderSessionsLens(allSessions) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   renderSessionTiles(allSessions, inPeriod);
+  renderConsistency(allSessions, inPeriod);
+  renderRestRows(inPeriod);
   renderPerWeekChart(inPeriod);
   renderWeekdayChart(inPeriod);
 
   renderMetricChart('#chart-duration', inPeriod, 'durationMin',
     (v) => Math.round(v) + ' min', 'var(--load)');
-  renderMetricChart('#chart-calories', inPeriod, 'calories',
-    (v) => Math.round(v) + ' kcal', 'var(--load)');
-  renderMetricChart('#chart-hr', inPeriod, 'avgHr',
-    (v) => Math.round(v) + ' bpm', 'var(--oxide)');
 
   renderMonthTable(allSessions);
+}
+
+/* ---------- Consistência e descanso ---------- */
+
+function renderConsistency(allSessions, inPeriod) {
+  const target = weeklyTarget;
+
+  // Dias distintos com treino: duas sessões no mesmo dia contam como um dia.
+  const days = {};
+  allSessions.forEach((s) => { days[s.date] = (days[s.date] || 0) + 1; });
+  Chart.heatmap($('#heatmap-host'), days, { weeks: 53 });
+
+  const byWeek = {};
+  allSessions.forEach((s) => {
+    const k = weekKey(s.date);
+    byWeek[k] = (byWeek[k] || 0) + 1;
+  });
+
+  const weeks = Object.keys(byWeek).sort();
+  const thisWeek = weekKey(todayISO());
+
+  // Sequência: a semana em curso não conta como falhada, porque ainda não
+  // acabou. Contá-la punia-te por consultares a app a uma segunda-feira.
+  let current = 0;
+  for (let i = weeks.length - 1; i >= 0; i--) {
+    if (weeks[i] === thisWeek) continue;
+    if (byWeek[weeks[i]] >= target) current++;
+    else break;
+  }
+
+  let best = 0;
+  let run = 0;
+  weeks.forEach((w) => {
+    if (byWeek[w] >= target) { run++; best = Math.max(best, run); }
+    else run = 0;
+  });
+
+  const weeksAtTarget = weeks.filter((w) => byWeek[w] >= target).length;
+  const pct = weeks.length ? Math.round((weeksAtTarget / weeks.length) * 100) : 0;
+
+  const host = $('#consistency-tiles');
+  host.innerHTML = '';
+  [
+    ['Alvo', String(target), 'por semana'],
+    ['Sequência', String(current), current === 1 ? 'semana' : 'semanas'],
+    ['Melhor', String(best), best === 1 ? 'semana' : 'semanas'],
+    ['Semanas no alvo', pct + '%', 'do histórico']
+  ].forEach(([label, value, unit]) => {
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.innerHTML =
+      '<span class="tile-label">' + label + '</span>' +
+      '<span class="tile-value">' + escapeHtml(value) + '</span>' +
+      '<span class="tile-unit">' + escapeHtml(unit) + '</span>';
+    host.appendChild(tile);
+  });
+}
+
+function renderRestRows(inPeriod) {
+  const host = $('#rest-rows');
+  host.innerHTML = '';
+
+  const dates = Array.from(new Set(inPeriod.map((s) => s.date))).sort();
+  if (dates.length < 2) {
+    host.innerHTML = '<p class="chart-empty">Poucos treinos no período para analisar descanso.</p>';
+    return;
+  }
+
+  const gaps = [];
+  for (let i = 1; i < dates.length; i++) {
+    const a = new Date(dates[i - 1] + 'T00:00:00');
+    const b = new Date(dates[i] + 'T00:00:00');
+    gaps.push(Math.round((b - a) / 86400000));
+  }
+
+  const avgGap = gaps.reduce((x, y) => x + y, 0) / gaps.length;
+
+  // Séries de dias consecutivos: um intervalo de 1 dia significa treinar
+  // no dia seguinte, ou seja, sem descanso pelo meio.
+  let run = 1;
+  let longest = 1;
+  let longRuns = 0;
+  gaps.forEach((g) => {
+    if (g === 1) {
+      run++;
+      longest = Math.max(longest, run);
+      if (run === 4) longRuns++;   // conta cada série de 4+ uma só vez
+    } else {
+      run = 1;
+    }
+  });
+
+  const fullRestDays = gaps.filter((g) => g >= 2).length;
+
+  fillRows(host, [
+    ['Intervalo médio', avgGap.toFixed(1) + ' dias', 'entre treinos'],
+    ['Máximo seguido', longest + (longest === 1 ? ' dia' : ' dias'), 'sem descanso'],
+    ['Blocos de 4+ dias', String(longRuns), longRuns === 1 ? 'ocorrência' : 'ocorrências'],
+    ['Pausas de 2+ dias', String(fullRestDays), 'no período']
+  ]);
+
+  if (longRuns > 0) {
+    const note = document.createElement('p');
+    note.className = 'flag';
+    note.textContent = 'Fizeste ' + longRuns + (longRuns === 1 ? ' bloco' : ' blocos') +
+      ' de 4 ou mais dias seguidos. Vale a pena olhar para isso se andas a sentir-te estagnado ou dorido.';
+    host.appendChild(note);
+  }
+}
+
+function fillRows(host, rows) {
+  rows.forEach(([label, value, unit]) => {
+    const row = document.createElement('div');
+    row.className = 'pr-row';
+    row.innerHTML =
+      '<span class="pr-label">' + escapeHtml(label) + '</span>' +
+      '<span class="pr-value">' + escapeHtml(value) + '</span>' +
+      '<span class="pr-date">' + escapeHtml(unit) + '</span>';
+    host.appendChild(row);
+  });
+}
+
+/* ---------- Metabolismo ---------- */
+
+/* Mifflin-St Jeor: a fórmula mais usada para estimar o metabolismo basal.
+ * É uma estimativa estatística, não uma medição — erra facilmente 10%. */
+function mifflinStJeor(weightKg, heightCm, age, sex) {
+  const base = (10 * weightKg) + (6.25 * heightCm) - (5 * age);
+  return sex === 'f' ? base - 161 : base + 5;
+}
+
+async function renderMetabolism(body, sessions) {
+  const host = $('#bmr-tiles');
+  host.innerHTML = '';
+
+  const heightCm = Number(await DB.getSetting('heightCm', 0));
+  const birthYear = Number(await DB.getSetting('birthYear', 0));
+  const sex = await DB.getSetting('sex', '');
+  const latest = body.filter((b) => b.weightKg != null)[0];
+
+  if (!heightCm || !birthYear || !sex || !latest) {
+    $('#bmr-hint').textContent =
+      'Preenche a altura, o ano de nascimento e o sexo em Definições, e regista ' +
+      'pelo menos uma pesagem. Sem os quatro valores não há cálculo possível.';
+    host.innerHTML = '<p class="chart-empty">Faltam dados.</p>';
+    return;
+  }
+
+  const age = new Date().getFullYear() - birthYear;
+  const bmr = mifflinStJeor(latest.weightKg, heightCm, age, sex);
+
+  // O multiplicador sai da tua frequência real dos últimos 90 dias, em vez
+  // de te perguntar o "nível de atividade", que toda a gente sobrestima.
+  const recent = filterByPeriod(sessions, 90);
+  const perWeek = recent.length / (90 / 7);
+  let factor = 1.2;
+  let factorLabel = 'sedentário';
+  if (perWeek >= 6.5) { factor = 1.9; factorLabel = 'muito intenso'; }
+  else if (perWeek >= 5) { factor = 1.725; factorLabel = 'intenso'; }
+  else if (perWeek >= 3) { factor = 1.55; factorLabel = 'moderado'; }
+  else if (perWeek >= 1) { factor = 1.375; factorLabel = 'ligeiro'; }
+
+  const tdee = bmr * factor;
+
+  [
+    ['Basal', Math.round(bmr).toLocaleString('pt-PT'), 'kcal/dia'],
+    ['Manutenção', Math.round(tdee).toLocaleString('pt-PT'), 'kcal/dia'],
+    ['Atividade', factor.toFixed(3).replace(/0+$/, ''), factorLabel],
+    ['Base', latest.weightKg.toFixed(1) + ' kg', prettyDate(latest.date)]
+  ].forEach(([label, value, unit]) => {
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.innerHTML =
+      '<span class="tile-label">' + label + '</span>' +
+      '<span class="tile-value">' + escapeHtml(value) + '</span>' +
+      '<span class="tile-unit">' + escapeHtml(unit) + '</span>';
+    host.appendChild(tile);
+  });
+
+  $('#bmr-hint').textContent =
+    'Basal é o que o corpo gasta em repouso absoluto; manutenção é a estimativa ' +
+    'com a tua frequência real de treino (' + perWeek.toFixed(1) + ' sessões/semana ' +
+    'nos últimos 90 dias). São fórmulas estatísticas, não medições: contam com ' +
+    'um erro de cerca de 10% para cada lado, e não substituem aconselhamento ' +
+    'de um nutricionista.';
 }
 
 /* days = 0 significa "tudo". */
@@ -781,7 +989,10 @@ function renderPerWeekChart(inPeriod) {
     all.forEach((k) => bars.push({ label: k.slice(5), value: byWeek[k] || 0 }));
   }
 
-  Chart.bar($('#chart-perweek'), bars.slice(-26), { format: (v) => v.toFixed(0) + ' treinos' });
+  Chart.bar($('#chart-perweek'), bars.slice(-26), {
+    format: (v) => v.toFixed(0) + ' treinos',
+    target: weeklyTarget
+  });
 }
 
 /* Todas as chaves de semana entre duas datas, inclusive. */
@@ -853,13 +1064,13 @@ function renderMonthTable(allSessions) {
   });
 }
 
-function renderStrengthSection(allSets, dateBySession) {
+function renderStrengthSection(allSets, dateBySession, intentBySession) {
   const select = $('#ev-exercise');
 
-  // Antes exigia-se carga > 0, o que deixava de fora tudo o que é peso
-  // corporal. Agora basta haver repetições; o tipo de gráfico decide-se
-  // por movimento, mais abaixo.
+  // Basta haver repetições; o tipo de gráfico decide-se por movimento.
   const working = allSets.filter((s) => !s.warmup && s.reps > 0);
+
+  renderLiftsTable(working, dateBySession);
 
   const used = {};
   working.forEach((s) => { used[s.exerciseId] = true; });
@@ -879,6 +1090,8 @@ function renderStrengthSection(allSets, dateBySession) {
     select.hidden = true;
     $('#chart-strength').innerHTML = '<p class="chart-empty">Regista séries de força para ver a evolução.</p>';
     $('#strength-prs').innerHTML = '';
+    $('#band-rows').innerHTML = '';
+    $('#intent-legend').innerHTML = '';
     $('#strength-hint').textContent = '';
     return;
   }
@@ -888,46 +1101,96 @@ function renderStrengthSection(allSets, dateBySession) {
   const mine = working.filter((s) => s.exerciseId === chosen);
   const loaded = mine.filter((s) => s.weightKg > 0);
 
-  // Decisão por dados, não por categoria: um movimento que nunca teve carga
-  // registada é tratado como peso corporal. Assim apanha ginástica, mas
-  // também box jumps ou GHD sit-ups, que estão noutra categoria.
   if (!loaded.length) {
-    renderBodyweightProgress(mine, dateBySession);
+    renderBodyweightProgress(mine, dateBySession, intentBySession);
   } else {
-    renderLoadedProgress(loaded, mine.length - loaded.length, dateBySession);
+    renderLoadedProgress(loaded, mine.length - loaded.length, dateBySession, intentBySession);
   }
 }
 
-/* Movimentos com carga: 1RM estimado, escala em kg. */
-function renderLoadedProgress(loaded, ignoredCount, dateBySession) {
-  const bestByDate = {};
-  loaded.forEach((s) => {
+/* Resume cada sessão de um movimento numa linha: a série mais pesada,
+ * o 1RM que ela estima, e a intenção com que a sessão foi marcada. */
+function summariseByDate(sets, dateBySession, intentBySession, useReps) {
+  const byDate = {};
+  sets.forEach((s) => {
     const date = dateBySession[s.sessionId];
     if (!date) return;
-    const e = epley(s.weightKg, s.reps);
-    if (!bestByDate[date] || e > bestByDate[date].e) bestByDate[date] = { e: e, set: s };
+    const score = useReps ? s.reps : epley(s.weightKg, s.reps);
+    if (!byDate[date] || score > byDate[date].score) {
+      byDate[date] = {
+        date: date,
+        score: score,
+        set: s,
+        intent: intentBySession[s.sessionId] || ''
+      };
+    }
   });
+  return Object.keys(byDate).sort().map((d) => byDate[d]);
+}
 
-  const points = Object.keys(bestByDate).sort().map((date) => ({
-    x: date,
-    y: bestByDate[date].e
+/* Recorde acumulado até cada data. Serve de referência no gráfico e é o que
+ * permite dizer "isto foi um dia leve" em vez de "isto foi uma queda". */
+function runningBest(entries) {
+  let best = 0;
+  return entries.map((e) => {
+    best = Math.max(best, e.score);
+    return { x: e.date, y: best };
+  });
+}
+
+/* Tendência dentro de uma faixa: metade recente contra metade antiga.
+ * Com menos de 4 sessões não há tendência nenhuma, e dizê-lo é mais honesto
+ * do que desenhar uma seta a partir de dois pontos. */
+function bandTrend(entries) {
+  if (entries.length < 4) return null;
+  const half = Math.floor(entries.length / 2);
+  const older = entries.slice(0, half);
+  const recent = entries.slice(entries.length - half);
+  const avg = (arr) => arr.reduce((a, e) => a + e.set.weightKg, 0) / arr.length;
+  const a = avg(older);
+  const b = avg(recent);
+  if (!a) return null;
+  return ((b - a) / a) * 100;
+}
+
+function trendMark(pct) {
+  if (pct == null) return { text: '—', cls: 'flat' };
+  if (pct > 2) return { text: '↑ ' + pct.toFixed(0) + '%', cls: 'up' };
+  if (pct < -2) return { text: '↓ ' + Math.abs(pct).toFixed(0) + '%', cls: 'down' };
+  return { text: '→ estável', cls: 'flat' };
+}
+
+/* Movimentos com carga: 1RM estimado, escala em kg. */
+function renderLoadedProgress(loaded, ignoredCount, dateBySession, intentBySession) {
+  const entries = summariseByDate(loaded, dateBySession, intentBySession, false);
+
+  const points = entries.map((e) => ({
+    x: e.date,
+    y: e.score,
+    color: INTENTS[e.intent] ? INTENTS[e.intent].color : INTENTS[''].color
   }));
 
-  Chart.line($('#chart-strength'), points, { format: (v) => v.toFixed(1) + ' kg' });
+  Chart.line($('#chart-strength'), points, {
+    format: (v) => v.toFixed(1) + ' kg',
+    pathColor: 'var(--ink-faint)',
+    reference: runningBest(entries)
+  });
 
-  let hint = 'A linha é o 1RM estimado pela fórmula de Epley, para tornar ' +
-    'comparáveis séries com repetições diferentes. Acima das 10 repetições sobrestima.';
+  renderIntentLegend(entries);
+  renderBandRows(entries, (e) => e.set.weightKg + ' kg');
+
+  let hint = 'Cada ponto é a melhor série do dia, convertida em 1RM estimado ' +
+    '(Epley). A cor diz a intenção com que marcaste a sessão; a linha tracejada ' +
+    'é o teu recorde acumulado. Um ponto baixo num dia leve não é queda.';
   if (ignoredCount > 0) {
-    // Movimento misto (com e sem colete, por exemplo): as séries sem carga
-    // ficam de fora porque um zero afundava a linha.
     hint += ' ' + ignoredCount + (ignoredCount === 1 ? ' série sem carga ficou' : ' séries sem carga ficaram') +
-      ' de fora. Se fazes este movimento com e sem peso, cria duas entradas no catálogo.';
+      ' de fora.';
   }
   $('#strength-hint').textContent = hint;
 
   const heaviest = loaded.slice().sort((a, b) => b.weightKg - a.weightKg)[0];
-  const bestVolumeSet = loaded.slice().sort((a, b) => (b.reps * b.weightKg) - (a.reps * a.weightKg))[0];
   const bestEpley = loaded.slice().sort((a, b) => epley(b.weightKg, b.reps) - epley(a.weightKg, a.reps))[0];
+  const bestVolumeSet = loaded.slice().sort((a, b) => (b.reps * b.weightKg) - (a.reps * a.weightKg))[0];
 
   fillPrList([
     ['Série mais pesada', heaviest.weightKg + ' kg × ' + heaviest.reps, dateBySession[heaviest.sessionId]],
@@ -936,30 +1199,38 @@ function renderLoadedProgress(loaded, ignoredCount, dateBySession) {
   ]);
 }
 
-/* Movimentos de peso corporal: a melhor série de cada dia, escala em repetições. */
-function renderBodyweightProgress(mine, dateBySession) {
-  const byDate = {};
-  mine.forEach((s) => {
-    const date = dateBySession[s.sessionId];
-    if (!date) return;
-    if (!byDate[date]) byDate[date] = { best: 0, total: 0, sets: 0 };
-    byDate[date].best = Math.max(byDate[date].best, s.reps);
-    byDate[date].total += s.reps;
-    byDate[date].sets += 1;
-  });
+/* Movimentos de peso corporal: escala em repetições. */
+function renderBodyweightProgress(mine, dateBySession, intentBySession) {
+  const entries = summariseByDate(mine, dateBySession, intentBySession, true);
 
-  const dates = Object.keys(byDate).sort();
-  const points = dates.map((date) => ({ x: date, y: byDate[date].best }));
+  const points = entries.map((e) => ({
+    x: e.date,
+    y: e.score,
+    color: INTENTS[e.intent] ? INTENTS[e.intent].color : INTENTS[''].color
+  }));
 
   Chart.line($('#chart-strength'), points, {
-    format: (v) => Math.round(v) + ' reps'
+    format: (v) => Math.round(v) + ' reps',
+    pathColor: 'var(--ink-faint)',
+    reference: runningBest(entries)
   });
 
-  $('#strength-hint').textContent =
-    'Movimento sem carga registada, por isso a linha é o melhor número de ' +
-    'repetições numa série de cada dia. Se começares a usar colete, regista o ' +
-    'peso e o gráfico passa sozinho para quilos.';
+  renderIntentLegend(entries);
+  renderBandRows(entries, (e) => e.set.reps + ' reps');
 
+  $('#strength-hint').textContent =
+    'Movimento sem carga registada, por isso a escala é em repetições. ' +
+    'Se começares a usar colete, regista o peso e passa sozinho para quilos.';
+
+  const byDate = {};
+  mine.forEach((s) => {
+    const d = dateBySession[s.sessionId];
+    if (!d) return;
+    if (!byDate[d]) byDate[d] = { total: 0, sets: 0 };
+    byDate[d].total += s.reps;
+    byDate[d].sets += 1;
+  });
+  const dates = Object.keys(byDate).sort();
   const bestSet = mine.slice().sort((a, b) => b.reps - a.reps)[0];
   const bestTotal = dates.slice().sort((a, b) => byDate[b].total - byDate[a].total)[0];
   const mostSets = dates.slice().sort((a, b) => byDate[b].sets - byDate[a].sets)[0];
@@ -969,6 +1240,136 @@ function renderBodyweightProgress(mine, dateBySession) {
     ['Mais repetições num dia', byDate[bestTotal].total + ' reps', bestTotal],
     ['Mais séries num dia', byDate[mostSets].sets + ' séries', mostSets]
   ]);
+}
+
+function renderIntentLegend(entries) {
+  const present = {};
+  entries.forEach((e) => { present[e.intent] = true; });
+
+  const host = $('#intent-legend');
+  host.innerHTML = '';
+  INTENT_ORDER.filter((k) => present[k]).forEach((k) => {
+    const item = document.createElement('span');
+    item.className = 'legend-item';
+    item.innerHTML = '<i style="background:' + INTENTS[k].color + '"></i>' + INTENTS[k].label;
+    host.appendChild(item);
+  });
+}
+
+/* A leitura de progresso que interessa: dentro de cada faixa, as cargas
+ * estão a subir? Comparar um dia leve com um dia pesado nunca diz nada. */
+function renderBandRows(entries, formatLoad) {
+  const host = $('#band-rows');
+  host.innerHTML = '';
+
+  INTENT_ORDER.forEach((key) => {
+    const inBand = entries.filter((e) => e.intent === key);
+    if (!inBand.length) return;
+
+    const avgLoad = inBand.reduce((a, e) => a + e.set.weightKg, 0) / inBand.length;
+    const usesLoad = avgLoad > 0;
+    const trend = usesLoad ? bandTrend(inBand) : null;
+    const mark = trendMark(trend);
+    const last = inBand[inBand.length - 1];
+
+    const row = document.createElement('div');
+    row.className = 'pr-row band-row';
+    row.innerHTML =
+      '<span class="pr-label"><i class="band-dot" style="background:' + INTENTS[key].color + '"></i>' +
+        INTENTS[key].label + ' · ' + inBand.length + (inBand.length === 1 ? ' sessão' : ' sessões') + '</span>' +
+      '<span class="pr-value">' + (usesLoad ? avgLoad.toFixed(1) + ' kg' : '—') + '</span>' +
+      '<span class="pr-date">última ' + escapeHtml(formatLoad(last)) + ' · ' +
+        '<b class="trend-' + mark.cls + '">' + mark.text + '</b></span>';
+    host.appendChild(row);
+  });
+
+  if (host.children.length) {
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'Carga média por faixa e tendência das sessões recentes ' +
+      'contra as antigas. Menos de 4 sessões numa faixa não dá tendência fiável.';
+    host.appendChild(note);
+  }
+}
+
+/* Tabela com todos os movimentos de uma vez — responde a "estou a aumentar
+ * pesos?" sem percorrer a lista de movimentos um a um. */
+function renderLiftsTable(working, dateBySession) {
+  const tbody = $('#lifts-table').querySelector('tbody');
+  tbody.innerHTML = '';
+
+  const byExercise = {};
+  working.forEach((s) => {
+    if (!byExercise[s.exerciseId]) byExercise[s.exerciseId] = [];
+    byExercise[s.exerciseId].push(s);
+  });
+
+  const ids = Object.keys(byExercise);
+  if (!ids.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Sem séries registadas.</td></tr>';
+    return;
+  }
+
+  const rows = ids.map((id) => {
+    const sets = byExercise[id];
+    const loaded = sets.filter((s) => s.weightKg > 0);
+    const useReps = loaded.length === 0;
+    const source = useReps ? sets : loaded;
+
+    const byDate = {};
+    source.forEach((s) => {
+      const d = dateBySession[s.sessionId];
+      if (!d) return;
+      const score = useReps ? s.reps : epley(s.weightKg, s.reps);
+      if (!byDate[d] || score > byDate[d].score) byDate[d] = { score: score, set: s };
+    });
+
+    const dates = Object.keys(byDate).sort();
+    if (!dates.length) return null;
+
+    const best = Math.max.apply(null, dates.map((d) => byDate[d].score));
+    const lastDate = dates[dates.length - 1];
+    const lastSet = byDate[lastDate].set;
+    const days = Math.floor((Date.now() - new Date(lastDate + 'T00:00:00').getTime()) / 86400000);
+
+    // Três últimas contra as três anteriores: reage a mudanças recentes
+    // sem saltar por causa de uma sessão isolada.
+    let trend = null;
+    if (dates.length >= 4) {
+      const scores = dates.map((d) => byDate[d].score);
+      const recent = scores.slice(-3);
+      const older = scores.slice(Math.max(0, scores.length - 6), scores.length - 3);
+      if (older.length) {
+        const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+        const o = avg(older);
+        if (o) trend = ((avg(recent) - o) / o) * 100;
+      }
+    }
+
+    return {
+      name: exerciseName(id),
+      best: useReps ? Math.round(best) + ' reps' : best.toFixed(1),
+      last: useReps ? lastSet.reps + ' reps' : lastSet.weightKg + ' kg',
+      days: days,
+      trend: trend
+    };
+  }).filter(Boolean);
+
+  // Ordem por recência: o que treinaste ontem no topo, o abandonado no fundo.
+  rows.sort((a, b) => a.days - b.days);
+
+  rows.forEach((r) => {
+    const mark = trendMark(r.trend);
+    const stale = r.days > 30 ? ' class="stale"' : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td' + stale + '>' + escapeHtml(r.name) + '</td>' +
+      '<td>' + escapeHtml(r.best) + '</td>' +
+      '<td>' + escapeHtml(r.last) + '</td>' +
+      '<td>' + (r.days === 0 ? 'hoje' : r.days + 'd') + '</td>' +
+      '<td class="trend-' + mark.cls + '">' + mark.text + '</td>';
+    tbody.appendChild(tr);
+  });
 }
 
 function fillPrList(rows) {
@@ -1102,7 +1503,96 @@ async function renderSettings() {
   const interval = await DB.getSetting('backupIntervalDays', 14);
   $('#f-backup-interval').value = String(interval);
 
+  $('#p-height').value = await DB.getSetting('heightCm', '') || '';
+  $('#p-birthyear').value = await DB.getSetting('birthYear', '') || '';
+  $('#p-sex').value = await DB.getSetting('sex', '') || '';
+  $('#p-weekly-target').value = String(weeklyTarget);
+
+  await renderDriveStatus();
   renderCatalog();
+}
+
+/* ---------- Google Drive ---------- */
+
+async function renderDriveStatus() {
+  const status = $('#drive-status');
+  const auto = await DB.getSetting('driveAuto', false);
+  $('#f-drive-auto').checked = !!auto;
+
+  if (!Drive.configured()) {
+    status.textContent = 'Falta colar o Client ID no ficheiro js/drive.js.';
+    $('#btn-drive-backup').disabled = true;
+    $('#btn-drive-restore').disabled = true;
+    $('#f-drive-auto').disabled = true;
+    return;
+  }
+
+  $('#btn-drive-backup').disabled = false;
+  $('#btn-drive-restore').disabled = false;
+  $('#f-drive-auto').disabled = false;
+
+  const last = await DB.getSetting('lastDriveBackupAt', null);
+  status.textContent = last
+    ? 'Última cópia no Drive: ' + prettyDate(last.slice(0, 10))
+    : 'Ainda não há cópia no Drive.';
+}
+
+async function doDriveBackup(silent) {
+  try {
+    if (!silent) toast('A enviar para o Drive…');
+    await Drive.backup();
+    await renderDriveStatus();
+    await refreshBackupState();
+    toast('Cópia enviada para o Drive');
+    return true;
+  } catch (err) {
+    console.error(err);
+    // Em silêncio não vale a pena incomodar: o botão manual continua lá.
+    if (!silent) toast('Falhou: ' + err.message);
+    return false;
+  }
+}
+
+async function doDriveRestore() {
+  if (!confirm('Trazer a cópia do Drive e juntar aos dados actuais?')) return;
+  try {
+    toast('A descarregar…');
+    const result = await Drive.restore();
+
+    exercises = await DB.getExercises();
+    indexExercises();
+    fillExercisePicker();
+    await renderSessionList();
+    await renderBodyList();
+    await renderSettings();
+
+    toast(result.sessions + ' sessões e ' + result.bodyMetrics + ' medições restauradas');
+  } catch (err) {
+    console.error(err);
+    toast('Falhou: ' + err.message);
+  }
+}
+
+/* Corre ao abrir a app: se o prazo passou e há autorização válida guardada,
+ * a cópia sobe sozinha. Se a autorização já expirou, falha em silêncio e
+ * o aviso encarnado aparece para carregares no botão. */
+async function maybeAutoBackup() {
+  if (!Drive.configured()) return;
+  if (!await DB.getSetting('driveAuto', false)) return;
+
+  const interval = Number(await DB.getSetting('backupIntervalDays', 14));
+  if (!interval) return;
+
+  const last = await DB.getSetting('lastDriveBackupAt', null);
+  if (last) {
+    const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+    if (days < interval) return;
+  }
+
+  const sessions = await DB.getSessions();
+  if (!sessions.length) return;   // nada para copiar
+
+  await doDriveBackup(true);
 }
 
 function renderCatalog() {
@@ -1391,6 +1881,52 @@ function bindEvents() {
     toast('Movimento criado');
   });
   $('#btn-wipe').addEventListener('click', wipeEverything);
+
+  // Perfil
+  $('#p-height').addEventListener('change', (ev) =>
+    DB.setSetting('heightCm', numOrNull(ev.target.value)));
+  $('#p-birthyear').addEventListener('change', (ev) =>
+    DB.setSetting('birthYear', numOrNull(ev.target.value)));
+  $('#p-sex').addEventListener('change', (ev) =>
+    DB.setSetting('sex', ev.target.value));
+  $('#p-weekly-target').addEventListener('change', async (ev) => {
+    weeklyTarget = Number(ev.target.value);
+    await DB.setSetting('weeklyTarget', weeklyTarget);
+    toast('Alvo: ' + weeklyTarget + ' sessões por semana');
+  });
+
+  // Google Drive
+  $('#btn-drive-backup').addEventListener('click', async () => {
+    // Primeiro carregar pede autorização; a partir daí é silencioso.
+    try {
+      if (!await DB.getSetting('lastDriveBackupAt', null)) await Drive.connect();
+    } catch (err) {
+      return toast('Autorização falhou: ' + err.message);
+    }
+    doDriveBackup(false);
+  });
+
+  $('#btn-drive-restore').addEventListener('click', async () => {
+    try {
+      if (!await DB.getSetting('lastDriveBackupAt', null)) await Drive.connect();
+    } catch (err) {
+      return toast('Autorização falhou: ' + err.message);
+    }
+    doDriveRestore();
+  });
+
+  $('#f-drive-auto').addEventListener('change', async (ev) => {
+    if (ev.target.checked) {
+      try {
+        await Drive.connect();
+      } catch (err) {
+        ev.target.checked = false;
+        return toast('Autorização falhou: ' + err.message);
+      }
+    }
+    await DB.setSetting('driveAuto', ev.target.checked);
+    toast(ev.target.checked ? 'Cópia automática ligada' : 'Cópia automática desligada');
+  });
 }
 
 function addGroup(exerciseId) {

@@ -69,8 +69,27 @@
       <div class="tiles" id="session-tiles"></div>
 
       <section class="panel">
+        <h2>Consistência</h2>
+        <div class="tiles" id="consistency-tiles"></div>
+        <div id="heatmap-host" class="heatmap-host"></div>
+        <p class="hint">Um quadrado por dia, último ano. Passa o dedo para ver a data.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Descanso</h2>
+        <div id="rest-rows" class="pr-list"></div>
+        <p class="hint">
+          Princípios gerais, não uma prescrição: cerca de 48 h entre sessões pesadas
+          do mesmo padrão de movimento, e pelo menos um dia completo de descanso por
+          semana. O que é adequado para ti depende de sono, idade, alimentação e
+          stress, que a app não conhece.
+        </p>
+      </section>
+
+      <section class="panel">
         <h2>Treinos por semana</h2>
         <div id="chart-perweek" class="chart-host"></div>
+        <p class="hint">A linha tracejada é o teu alvo semanal.</p>
       </section>
 
       <section class="panel">
@@ -82,16 +101,6 @@
       <section class="panel">
         <h2>Duração por sessão</h2>
         <div id="chart-duration" class="chart-host"></div>
-      </section>
-
-      <section class="panel">
-        <h2>Calorias por sessão</h2>
-        <div id="chart-calories" class="chart-host"></div>
-      </section>
-
-      <section class="panel">
-        <h2>Frequência cardíaca média</h2>
-        <div id="chart-hr" class="chart-host"></div>
       </section>
 
       <section class="panel">
@@ -111,10 +120,26 @@
     <!-- ---------- LENTE: FORÇA ---------- -->
     <div data-lens-panel="forca" hidden>
       <section class="panel">
+        <h2>Todos os movimentos</h2>
+        <div class="table-wrap">
+          <table class="data-table" id="lifts-table">
+            <thead>
+              <tr><th>Movimento</th><th>Melhor</th><th>Última</th><th>Há</th><th>Tend.</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint">Melhor 1RM estimado, carga da série mais pesada da última vez,
+        dias desde então, e tendência das três últimas sessões contra as três anteriores.</p>
+      </section>
+
+      <section class="panel">
         <h2>Progressão de carga</h2>
         <select id="ev-exercise" aria-label="Movimento a analisar"></select>
         <div id="chart-strength" class="chart-host"></div>
+        <div class="legend" id="intent-legend"></div>
         <p class="hint" id="strength-hint"></p>
+        <div id="band-rows" class="pr-list"></div>
         <div id="strength-prs" class="pr-list"></div>
       </section>
 
@@ -137,6 +162,12 @@
       <section class="panel">
         <h2>Peso corporal</h2>
         <div id="chart-weight" class="chart-host"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Metabolismo</h2>
+        <div class="tiles" id="bmr-tiles"></div>
+        <p class="hint" id="bmr-hint"></p>
       </section>
 
       <section class="panel">
@@ -179,6 +210,24 @@
     </section>
 
     <section class="panel">
+      <h2>Google Drive</h2>
+      <p class="stat" id="drive-status">A verificar…</p>
+      <div class="btn-stack">
+        <button class="btn-primary" id="btn-drive-backup">Enviar cópia agora</button>
+        <button class="btn-secondary" id="btn-drive-restore">Restaurar do Drive</button>
+      </div>
+      <label class="checkline">
+        <input type="checkbox" id="f-drive-auto">
+        <span>Enviar automaticamente ao abrir, quando passar o prazo acima</span>
+      </label>
+      <p class="hint">
+        A cópia vai para a pasta <strong>Treino</strong> no teu Drive, num
+        ficheiro que se substitui de cada vez. Restaurar funde com o que já
+        tens — nunca apaga nada.
+      </p>
+    </section>
+
+    <section class="panel">
       <h2>Exportar para folha de cálculo</h2>
       <p class="hint">CSV separado por ponto e vírgula, com BOM — abre direito no Excel português.</p>
       <div class="btn-stack">
@@ -187,6 +236,38 @@
         <button class="btn-secondary" id="btn-csv-wods">WODs</button>
         <button class="btn-secondary" id="btn-csv-body">Peso e medidas</button>
       </div>
+    </section>
+
+    <section class="panel">
+      <h2>Perfil e objectivos</h2>
+      <p class="hint">Só para calcular o metabolismo. Fica no telemóvel, como tudo o resto.</p>
+      <div class="row-3">
+        <label class="field">
+          <span class="label">Altura <em>cm</em></span>
+          <input type="number" id="p-height" inputmode="numeric" min="0" step="1" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">Ano nasc.</span>
+          <input type="number" id="p-birthyear" inputmode="numeric" min="1900" step="1" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">Sexo</span>
+          <select id="p-sex">
+            <option value="">—</option>
+            <option value="m">Masculino</option>
+            <option value="f">Feminino</option>
+          </select>
+        </label>
+      </div>
+      <label class="field">
+        <span class="label">Alvo de sessões por semana</span>
+        <select id="p-weekly-target">
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
+      </label>
     </section>
 
     <section class="panel">
@@ -249,6 +330,16 @@
       <details class="block" open>
         <summary>Força</summary>
         <div class="block-body">
+          <label class="field">
+            <span class="label">Intenção do treino</span>
+            <select id="f-intent">
+              <option value="leve">Leve — técnica, volume, recuperação</option>
+              <option value="moderado" selected>Moderado — trabalho de base</option>
+              <option value="pesado">Pesado — perto do máximo</option>
+              <option value="teste">Teste — tentativa de PR</option>
+            </select>
+          </label>
+
           <div id="groups"></div>
 
           <div class="add-exercise">
@@ -419,6 +510,7 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="js/db.js"></script>
+<script src="js/drive.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/app.js"></script>
 </body>

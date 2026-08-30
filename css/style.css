@@ -732,3 +732,102 @@ textarea { resize: vertical; }
   color: var(--ink-faint);
   padding: 24px 0 !important;
 }
+
+/* Linha com caixa de verificação (opções do Drive) */
+.checkline {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.checkline input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin: 1px 0 0;
+  accent-color: var(--load);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   Etapa 6 — faixas de intenção, consistência e metabolismo
+   ============================================================ */
+
+/* Legenda das cores de intenção */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 10px 0 2px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+.legend-item i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.band-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 7px;
+}
+
+.band-row .pr-label { display: flex; align-items: center; }
+
+/* Setas de tendência */
+.trend-up   { color: #6FA86B; font-weight: 700; }
+.trend-down { color: var(--oxide); font-weight: 700; }
+.trend-flat { color: var(--ink-faint); font-weight: 600; }
+
+.data-table td.trend-up,
+.data-table td.trend-down,
+.data-table td.trend-flat { font-size: 12px; }
+
+/* Movimento sem uso há mais de um mês */
+.data-table td.stale { color: var(--ink-faint); }
+
+/* Mapa de calor anual */
+.heatmap-host {
+  margin-top: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.heatmap {
+  display: block;
+  min-width: 460px;
+  height: 92px;
+}
+
+/* Observação assinalada na análise de descanso */
+.flag {
+  margin: 14px 0 0;
+  padding: 11px 12px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--oxide);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
