@@ -39,6 +39,23 @@
       <h1>Corpo</h1>
       <button class="btn-primary" id="btn-new-body">Nova medição</button>
     </header>
+    <section class="panel">
+      <h2>Plano alimentar</h2>
+      <div class="month-nav">
+        <button class="btn-ghost" id="diet-prev" aria-label="Mês anterior">‹</button>
+        <span id="diet-month"></span>
+        <button class="btn-ghost" id="diet-next" aria-label="Mês seguinte">›</button>
+      </div>
+      <div id="diet-grid" class="diet-grid"></div>
+      <div class="legend">
+        <span class="legend-item"><i class="diet-swatch yes"></i>Cumpri</span>
+        <span class="legend-item"><i class="diet-swatch no"></i>Não cumpri</span>
+        <span class="legend-item"><i class="diet-swatch"></i>Por marcar</span>
+      </div>
+      <div class="tiles" id="diet-tiles"></div>
+      <p class="hint">Toca num dia para alternar entre cumpri, não cumpri e por marcar.</p>
+    </section>
+
     <div id="body-list" class="list"></div>
     <p class="empty" id="empty-body" hidden>
       Ainda não há medições.<br>A app abre já na sexta-feira mais recente.
@@ -171,6 +188,20 @@
       <section class="panel">
         <h2>Peso corporal</h2>
         <div id="chart-weight" class="chart-host"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Plano alimentar e peso</h2>
+        <div class="table-wrap">
+          <table class="data-table" id="diet-table">
+            <thead>
+              <tr><th>Semana</th><th>Cumpri</th><th>Peso</th><th>Variação</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="diet-groups"></div>
+        <p class="hint" id="diet-hint"></p>
       </section>
 
       <section class="panel">

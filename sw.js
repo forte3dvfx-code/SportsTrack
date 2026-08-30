@@ -10,7 +10,7 @@
  * Mesmo assim, incrementa CACHE_NAME sempre que alterares ficheiros:
  * e o que garante que a copia offline tambem fica actualizada. */
 
-const CACHE_NAME = 'treino-v7';
+const CACHE_NAME = 'treino-v8';
 
 const SHELL = [
   './',

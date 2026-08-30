@@ -42,7 +42,9 @@ async function init() {
   weeklyTarget = Number(await DB.getSetting('weeklyTarget', 5));
   bindEvents();
   await renderSessionList();
+  await loadDiet();
   await renderBodyList();
+  await renderDietGrid();
   await refreshBackupState();
   registerServiceWorker();
   maybeAutoBackup();   // não bloqueia o arranque: corre em segundo plano
@@ -548,6 +550,228 @@ async function removeSession() {
   toast('Sessão apagada');
 }
 
+/* ---------- Plano alimentar ---------- */
+
+let dietMonth = null;   // { year, month } do mês visível na grelha
+let dietMap = {};       // 'YYYY-MM-DD' -> true/false
+
+const MONTH_NAMES_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+async function loadDiet() {
+  const rows = await DB.getDietDays();
+  dietMap = {};
+  rows.forEach((r) => { dietMap[r.date] = !!r.ok; });
+}
+
+async function renderDietGrid() {
+  if (!dietMonth) {
+    const now = new Date();
+    dietMonth = { year: now.getFullYear(), month: now.getMonth() };
+  }
+
+  const { year, month } = dietMonth;
+  $('#diet-month').textContent = MONTH_NAMES_PT[month] + ' ' + year;
+
+  // Não deixa navegar para o futuro: marcar amanhã não faz sentido.
+  const now = new Date();
+  $('#diet-next').disabled =
+    (year > now.getFullYear()) ||
+    (year === now.getFullYear() && month >= now.getMonth());
+
+  const grid = $('#diet-grid');
+  grid.innerHTML = '';
+
+  ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].forEach((d) => {
+    const head = document.createElement('span');
+    head.className = 'diet-head';
+    head.textContent = d;
+    grid.appendChild(head);
+  });
+
+  const first = new Date(year, month, 1);
+  const offset = (first.getDay() + 6) % 7;   // segunda = 0
+  for (let i = 0; i < offset; i++) {
+    grid.appendChild(document.createElement('span'));
+  }
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayStr = todayISO();
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'diet-cell';
+    cell.textContent = day;
+
+    const state = dietMap[date];
+    if (state === true) cell.classList.add('yes');
+    else if (state === false) cell.classList.add('no');
+    if (date === todayStr) cell.classList.add('today');
+
+    if (date > todayStr) {
+      cell.disabled = true;
+    } else {
+      cell.addEventListener('click', () => toggleDietDay(date));
+    }
+
+    cell.setAttribute('aria-label', date + ': ' +
+      (state === true ? 'cumpri' : state === false ? 'não cumpri' : 'por marcar'));
+    grid.appendChild(cell);
+  }
+
+  renderDietTiles();
+}
+
+/* Três estados em ciclo. "Por marcar" é preciso: um dia que te esqueceste
+ * de registar não é o mesmo que um dia em que falhaste o plano. */
+async function toggleDietDay(date) {
+  const current = dietMap[date];
+  if (current === undefined) {
+    await DB.setDietDay(date, true);
+    dietMap[date] = true;
+  } else if (current === true) {
+    await DB.setDietDay(date, false);
+    dietMap[date] = false;
+  } else {
+    await DB.deleteDietDay(date);
+    delete dietMap[date];
+  }
+  renderDietGrid();
+}
+
+function renderDietTiles() {
+  const { year, month } = dietMonth;
+  const prefix = year + '-' + String(month + 1).padStart(2, '0');
+  const todayStr = todayISO();
+
+  const marked = Object.keys(dietMap).filter((d) => d.indexOf(prefix) === 0);
+  const done = marked.filter((d) => dietMap[d] === true);
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const elapsed = (prefix === todayStr.slice(0, 7))
+    ? Number(todayStr.slice(8, 10))
+    : daysInMonth;
+  const unmarked = Math.max(0, elapsed - marked.length);
+
+  // Sequência de dias cumpridos a contar de hoje para trás. Um dia por
+  // marcar interrompe: não se presume o que não se registou.
+  let streak = 0;
+  const cursor = new Date();
+  for (let i = 0; i < 400; i++) {
+    const key = isoOf(cursor);
+    if (dietMap[key] === true) streak++;
+    else if (i > 0 || dietMap[key] === false) break;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  const pct = marked.length ? Math.round((done.length / marked.length) * 100) : 0;
+
+  const host = $('#diet-tiles');
+  host.innerHTML = '';
+  [
+    ['Cumpridos', done.length + '/' + marked.length, 'dias marcados'],
+    ['Taxa', pct + '%', 'dos marcados'],
+    ['Sequência', String(streak), streak === 1 ? 'dia' : 'dias'],
+    ['Por marcar', String(unmarked), 'neste mês']
+  ].forEach(([label, value, unit]) => {
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.innerHTML =
+      '<span class="tile-label">' + label + '</span>' +
+      '<span class="tile-value">' + escapeHtml(value) + '</span>' +
+      '<span class="tile-unit">' + escapeHtml(unit) + '</span>';
+    host.appendChild(tile);
+  });
+}
+
+/* Relação semanal entre adesão e peso.
+ * Deliberadamente sem coeficientes de correlação nem linhas de tendência:
+ * com uma pesagem por semana, a variação é dominada por hidratação e
+ * glicogénio, e qualquer estatística a esta escala seria inventada. */
+function renderDietAnalysis(body) {
+  const tbody = $('#diet-table').querySelector('tbody');
+  tbody.innerHTML = '';
+  $('#diet-groups').innerHTML = '';
+
+  const weights = body.filter((b) => b.weightKg != null);
+  const dates = Object.keys(dietMap);
+
+  if (!dates.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="table-empty">Marca dias no separador Corpo.</td></tr>';
+    $('#diet-hint').textContent = '';
+    return;
+  }
+
+  const byWeek = {};
+  dates.forEach((d) => {
+    const k = weekKey(d);
+    if (!byWeek[k]) byWeek[k] = { done: 0, marked: 0, weight: null };
+    byWeek[k].marked++;
+    if (dietMap[d]) byWeek[k].done++;
+  });
+
+  // Peso da semana: a última pesagem dessa semana.
+  weights.slice().sort((a, b) => a.date.localeCompare(b.date)).forEach((w) => {
+    const k = weekKey(w.date);
+    if (!byWeek[k]) byWeek[k] = { done: 0, marked: 0, weight: null };
+    byWeek[k].weight = w.weightKg;
+  });
+
+  const keys = Object.keys(byWeek).sort();
+  let previousWeight = null;
+  const rows = keys.map((k) => {
+    const w = byWeek[k];
+    let delta = null;
+    if (w.weight != null && previousWeight != null) delta = w.weight - previousWeight;
+    if (w.weight != null) previousWeight = w.weight;
+    return { key: k, done: w.done, marked: w.marked, weight: w.weight, delta: delta };
+  });
+
+  rows.slice().reverse().slice(0, 16).forEach((r) => {
+    const tr = document.createElement('tr');
+    const deltaTxt = r.delta == null ? '—'
+      : (r.delta > 0 ? '+' : r.delta < 0 ? '−' : '±') + Math.abs(r.delta).toFixed(1);
+    const cls = r.delta == null ? 'trend-flat' : r.delta < 0 ? 'trend-up' : r.delta > 0 ? 'trend-down' : 'trend-flat';
+    tr.innerHTML =
+      '<td>' + r.key.slice(5) + ' <span class="muted">' + r.key.slice(2, 4) + '</span></td>' +
+      '<td>' + r.done + '/' + r.marked + '</td>' +
+      '<td>' + (r.weight != null ? r.weight.toFixed(1) : '—') + '</td>' +
+      '<td class="' + cls + '">' + deltaTxt + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  // Comparação por grupos, só quando há semanas suficientes para não
+  // ser uma média de dois casos.
+  const usable = rows.filter((r) => r.delta != null && r.marked >= 4);
+  if (usable.length >= 8) {
+    const high = usable.filter((r) => r.done >= 6);
+    const low = usable.filter((r) => r.done <= 4);
+    const mean = (arr) => arr.reduce((a, r) => a + r.delta, 0) / arr.length;
+
+    if (high.length >= 3 && low.length >= 3) {
+      const host = $('#diet-groups');
+      fillRows(host, [
+        ['Semanas com 6–7 dias', (mean(high) >= 0 ? '+' : '−') + Math.abs(mean(high)).toFixed(2) + ' kg',
+          high.length + (high.length === 1 ? ' semana' : ' semanas')],
+        ['Semanas com 4 ou menos', (mean(low) >= 0 ? '+' : '−') + Math.abs(mean(low)).toFixed(2) + ' kg',
+          low.length + (low.length === 1 ? ' semana' : ' semanas')]
+      ]);
+      $('#diet-hint').textContent =
+        'Variação média do peso por grupo de semanas. São médias de poucos casos, ' +
+        'não uma relação de causa e efeito: o peso semanal mexe com hidratação, ' +
+        'sal e glicogénio muito mais do que com uma semana de plano.';
+      return;
+    }
+  }
+
+  $('#diet-hint').textContent =
+    'A comparação entre semanas cumpridas e não cumpridas aparece a partir de ' +
+    '8 semanas com marcações e pesagem. Com menos, qualquer padrão seria ruído. ' +
+    'Tens ' + usable.length + (usable.length === 1 ? ' semana utilizável' : ' semanas utilizáveis') + '.';
+}
+
 /* ---------- Corpo ---------- */
 
 async function renderBodyList() {
@@ -741,6 +965,7 @@ async function renderEvolution() {
   ]);
   renderWeightSection(body);
   renderMeasureSection(body);
+  renderDietAnalysis(body);
   await renderMetabolism(body, sessionsForBmr);
 }
 
@@ -1727,8 +1952,10 @@ async function doDriveRestore() {
     exercises = await DB.getExercises();
     indexExercises();
     fillExercisePicker();
+    await loadDiet();
     await renderSessionList();
     await renderBodyList();
+    await renderDietGrid();
     await renderSettings();
 
     toast(result.sessions + ' sessões e ' + result.bodyMetrics + ' medições restauradas');
@@ -1846,8 +2073,10 @@ async function importJSON(file) {
     exercises = await DB.getExercises();
     indexExercises();
     fillExercisePicker();
+    await loadDiet();
     await renderSessionList();
     await renderBodyList();
+    await renderDietGrid();
     await renderSettings();
 
     toast(result.sessions + ' sessões e ' + result.bodyMetrics + ' medições importadas');
@@ -1916,11 +2145,17 @@ async function exportCSV(kind) {
     );
   } else {
     name = 'corpo';
+    // A marcação do plano vai na mesma folha: é a mesma linha temporal
+    // e evita andar a cruzar dois ficheiros à mão no Excel.
     csv = toCSV(
-      ['data', 'peso_kg', 'massa_gorda_pct', 'cintura_cm', 'anca_cm', 'peito_cm', 'braco_dto_cm', 'coxa_dta_cm', 'pescoco_cm', 'notas'],
+      ['data', 'peso_kg', 'massa_gorda_pct', 'cintura_cm', 'anca_cm', 'peito_cm',
+       'braco_dto_cm', 'coxa_dta_cm', 'pescoco_cm', 'plano_alimentar', 'notas'],
       body.slice().sort((a, b) => a.date.localeCompare(b.date)).map((b) => {
         const m = b.measures || {};
-        return [b.date, b.weightKg, b.bodyFatPct, m.waist, m.hip, m.chest, m.armR, m.thighR, m.neck, b.notes];
+        const diet = dietMap[b.date];
+        return [b.date, b.weightKg, b.bodyFatPct, m.waist, m.hip, m.chest,
+          m.armR, m.thighR, m.neck,
+          diet === true ? 'cumpri' : diet === false ? 'nao cumpri' : '', b.notes];
       })
     );
   }
@@ -1950,8 +2185,10 @@ async function wipeEverything() {
   exercises = await DB.seedExercisesIfEmpty();
   indexExercises();
   fillExercisePicker();
+  await loadDiet();
   await renderSessionList();
   await renderBodyList();
+  await renderDietGrid();
   await renderSettings();
   toast('Tudo apagado');
 }
@@ -2000,6 +2237,17 @@ function bindEvents() {
 
   // Corpo
   $('#btn-new-body').addEventListener('click', () => openBodyEditor(null));
+
+  $('#diet-prev').addEventListener('click', () => {
+    dietMonth.month -= 1;
+    if (dietMonth.month < 0) { dietMonth.month = 11; dietMonth.year -= 1; }
+    renderDietGrid();
+  });
+  $('#diet-next').addEventListener('click', () => {
+    dietMonth.month += 1;
+    if (dietMonth.month > 11) { dietMonth.month = 0; dietMonth.year += 1; }
+    renderDietGrid();
+  });
   $('#btn-body-cancel').addEventListener('click', () => { bodyEditor = null; switchTab('corpo'); });
   $('#btn-body-save').addEventListener('click', saveBodyEditor);
   $('#btn-body-delete').addEventListener('click', removeBodyMetric);

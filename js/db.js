@@ -1,11 +1,12 @@
 /* db.js — camada de persistência (IndexedDB)
  * Todas as funções devolvem Promises. Sem dependências externas.
  *
- * VERSÃO 2: acrescenta a store 'settings'. A migração é aditiva —
- * os dados já gravados na versão 1 mantêm-se intactos. */
+ * VERSÃO 3: acrescenta a store 'diet' (marcação diária do plano alimentar).
+ * VERSÃO 2: acrescentou a store 'settings'.
+ * As migrações são aditivas — nada do que está gravado se perde. */
 
 const DB_NAME = 'treino-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let _db = null;
 
@@ -95,6 +96,10 @@ function openDB() {
       // Novo na versão 2.
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'key' });
+      }
+      // Novo na versão 3. Data como chave: uma marcação por dia.
+      if (!db.objectStoreNames.contains('diet')) {
+        db.createObjectStore('diet', { keyPath: 'date' });
       }
     };
 
@@ -252,6 +257,22 @@ function deleteBodyMetric(date) {
   return tx('bodyMetrics', 'readwrite', (t) => t.objectStore('bodyMetrics').delete(date));
 }
 
+/* ---------- Plano alimentar ---------- */
+
+/* Ausência de registo não é o mesmo que "não cumpri": um dia por marcar
+ * fica simplesmente fora das contas, em vez de contar como falha. */
+function getDietDays() {
+  return getAll('diet');
+}
+
+function setDietDay(date, ok) {
+  return tx('diet', 'readwrite', (t) => t.objectStore('diet').put({ date: date, ok: !!ok }));
+}
+
+function deleteDietDay(date) {
+  return tx('diet', 'readwrite', (t) => t.objectStore('diet').delete(date));
+}
+
 /* ---------- Definições ---------- */
 
 async function getSetting(key, fallback) {
@@ -267,9 +288,9 @@ function setSetting(key, value) {
 /* ---------- Exportar / importar ---------- */
 
 async function exportAll() {
-  const [sessions, sets, wods, exercisesRows, bodyMetrics] = await Promise.all([
+  const [sessions, sets, wods, exercisesRows, bodyMetrics, diet] = await Promise.all([
     getAll('sessions'), getAll('sets'), getAll('wods'),
-    getAll('exercises'), getAll('bodyMetrics')
+    getAll('exercises'), getAll('bodyMetrics'), getAll('diet')
   ]);
   return {
     app: 'treino',
@@ -280,7 +301,8 @@ async function exportAll() {
       sets: sets,
       wods: wods,
       exercises: exercisesRows,
-      bodyMetrics: bodyMetrics
+      bodyMetrics: bodyMetrics,
+      diet: diet
     }
   };
 }
@@ -292,7 +314,7 @@ async function exportAll() {
 async function importAll(payload) {
   if (!payload || !payload.data) throw new Error('Ficheiro sem o campo "data".');
   const d = payload.data;
-  const result = { sessions: 0, sets: 0, wods: 0, exercises: 0, bodyMetrics: 0 };
+  const result = { sessions: 0, sets: 0, wods: 0, exercises: 0, bodyMetrics: 0, diet: 0 };
 
   const local = await getExercises();
   const byName = {};
@@ -315,7 +337,7 @@ async function importAll(payload) {
     }
   });
 
-  await tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics'], 'readwrite', (t) => {
+  await tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet'], 'readwrite', (t) => {
     toInsert.forEach((e) => t.objectStore('exercises').put(e));
 
     (d.sessions || []).forEach((s) => {
@@ -343,6 +365,12 @@ async function importAll(payload) {
       t.objectStore('bodyMetrics').put(b);
       result.bodyMetrics++;
     });
+
+    (d.diet || []).forEach((x) => {
+      if (!x || !x.date) return;
+      t.objectStore('diet').put(x);
+      result.diet++;
+    });
   });
 
   return result;
@@ -350,8 +378,8 @@ async function importAll(payload) {
 
 /* Apaga tudo menos as definições. Usado só pelo botão de reposição. */
 function clearAllData() {
-  return tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics'], 'readwrite', (t) => {
-    ['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics']
+  return tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet'], 'readwrite', (t) => {
+    ['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet']
       .forEach((name) => t.objectStore(name).clear());
   });
 }
@@ -377,6 +405,9 @@ const DB = {
   getBodyMetric: getBodyMetric,
   saveBodyMetric: saveBodyMetric,
   deleteBodyMetric: deleteBodyMetric,
+  getDietDays: getDietDays,
+  setDietDay: setDietDay,
+  deleteDietDay: deleteDietDay,
   getSetting: getSetting,
   setSetting: setSetting,
   exportAll: exportAll,
