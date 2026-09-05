@@ -448,14 +448,6 @@
             <input type="number" id="f-wod-cap" inputmode="numeric" min="0" step="1" placeholder="—">
           </label>
 
-          <div class="field" id="wod-outcome-field">
-            <span class="label">Resultado</span>
-            <div class="segmented small" id="wod-outcome">
-              <button type="button" class="seg is-active" data-outcome="finished">Concluí</button>
-              <button type="button" class="seg" data-outcome="capped">Bati no tempo</button>
-            </div>
-          </div>
-
           <div class="row-2" id="wod-time-fields">
             <label class="field">
               <span class="label">Tempo <em>min</em></span>
@@ -466,6 +458,8 @@
               <input type="number" id="f-wod-sec" inputmode="numeric" min="0" max="59" step="1" placeholder="—">
             </label>
           </div>
+
+          <p class="outcome-note" id="wod-outcome-note" hidden></p>
 
           <label class="field" id="wod-reps-field" hidden>
             <span class="label">Repetições feitas <em>até ao limite</em></span>

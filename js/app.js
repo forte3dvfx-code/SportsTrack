@@ -38,7 +38,6 @@ let exercises = [];          // catálogo carregado uma vez
 let exercisesById = {};      // atalho id -> registo
 let wodNamesSeen = [];       // alimenta o autocompletar de nomes de WOD
 
-let wodOutcome = 'finished'; // 'finished' | 'capped', escolhido no editor
 let wodScaling = 'rx';       // 'rxplus' | 'rx' | 'scaled'
 let editor = null;           // estado do editor de sessão
 let bodyEditor = null;       // estado do editor de medição
@@ -285,6 +284,8 @@ async function openEditor(sessionId) {
   setWodScaling(w ? (w.scaling || 'rx') : 'rx');
   $('#f-wod-min').value = w && w.timeSec != null ? Math.floor(w.timeSec / 60) : '';
   $('#f-wod-sec').value = w && w.timeSec != null ? w.timeSec % 60 : '';
+  // Nos WODs antigos marcados como "bateu no cap" o tempo gravado já era o
+  // do limite, por isso o cálculo devolve o mesmo resultado sem conversão.
   $('#f-wod-rounds').value = w && w.rounds != null ? w.rounds : '';
   $('#f-wod-extra').value = w && w.extraReps != null ? w.extraReps : '';
   $('#f-wod-weight').value = w && w.weightKg != null ? w.weightKg : '';
@@ -292,10 +293,7 @@ async function openEditor(sessionId) {
   $('#f-wod-repsdone').value = w && w.repsDone != null ? w.repsDone : '';
   $('#f-wod-desc').value = w ? (w.description || '') : '';
 
-  // WODs gravados antes deste campo existir contam como concluídos:
-  // se tinham tempo registado, é porque acabaram.
-  wodOutcome = (w && w.finished === false) ? 'capped' : 'finished';
-  setWodOutcome(wodOutcome);
+
 
   refreshWodFields();
   fillWodNames();
@@ -348,25 +346,54 @@ function setWodScaling(value) {
   });
 }
 
-function setWodOutcome(value) {
-  wodOutcome = value;
-  document.querySelectorAll('#wod-outcome .seg').forEach((b) => {
-    b.classList.toggle('is-active', b.dataset.outcome === value);
-  });
-  refreshWodFields();
+/* O resultado não se marca: sai da comparação entre o tempo registado e o
+ * limite. Bater exactamente no limite conta como não ter concluído — quem
+ * acaba, acaba antes. */
+function computeWodOutcome() {
+  const capMin = numOrNull($('#f-wod-cap').value);
+  const min = numOrNull($('#f-wod-min').value);
+  const sec = numOrNull($('#f-wod-sec').value);
+  const hasTime = (min != null || sec != null);
+  const timeSec = hasTime ? ((min || 0) * 60 + (sec || 0)) : null;
+
+  if (capMin == null || timeSec == null) {
+    return { capMin: capMin, timeSec: timeSec, capped: false, known: false };
+  }
+  return {
+    capMin: capMin,
+    timeSec: timeSec,
+    capped: timeSec >= capMin * 60,
+    known: true
+  };
 }
 
 function refreshWodFields() {
   const format = $('#f-wod-format').value;
   const isAmrap = (format === 'amrap');
-  const capped = (wodOutcome === 'capped');
 
   // Num AMRAP não se bate no tempo: o tempo é fixo e o resultado são rondas.
-  $('#wod-outcome-field').hidden = isAmrap;
   $('#wod-round-fields').hidden = !isAmrap;
-  $('#wod-time-fields').hidden = isAmrap || capped;
-  $('#wod-reps-field').hidden = isAmrap || !capped;
+  $('#wod-time-fields').hidden = isAmrap;
   $('#wod-cap-field').hidden = isAmrap;
+
+  const outcome = computeWodOutcome();
+  const note = $('#wod-outcome-note');
+
+  if (isAmrap || !outcome.known) {
+    note.hidden = true;
+    $('#wod-reps-field').hidden = true;
+    return;
+  }
+
+  note.hidden = false;
+  note.className = 'outcome-note ' + (outcome.capped ? 'is-capped' : 'is-done');
+  note.textContent = outcome.capped
+    ? 'Bateste no limite de ' + outcome.capMin + ':00.'
+    : 'Concluíste dentro do limite, com ' +
+      fmtTime(outcome.capMin * 60 - outcome.timeSec) + ' de sobra.';
+
+  // O campo de repetições só faz sentido quando não acabaste.
+  $('#wod-reps-field').hidden = !outcome.capped;
 }
 
 function renderGroups() {
@@ -563,23 +590,16 @@ async function saveEditor() {
   if (wodName || wodDesc) {
     const format = $('#f-wod-format').value;
     const isAmrap = (format === 'amrap');
-    const capped = !isAmrap && (wodOutcome === 'capped');
-    const min = numOrNull($('#f-wod-min').value);
-    const sec = numOrNull($('#f-wod-sec').value);
-    const hasTime = min != null || sec != null;
-    const capMin = numOrNull($('#f-wod-cap').value);
+    const outcome = computeWodOutcome();
+    const capped = !isAmrap && outcome.capped;
 
     wods.push({
       id: DB.uid(),
       sessionId: session.id,
       name: wodName,
       format: format,
-      // Quem bate no limite fica com o tempo do limite; o resultado real
-      // são as repetições feitas, guardadas em repsDone.
-      timeSec: isAmrap ? null
-        : capped ? (capMin != null ? capMin * 60 : null)
-        : (hasTime ? ((min || 0) * 60 + (sec || 0)) : null),
-      capMin: capMin,
+      timeSec: isAmrap ? null : outcome.timeSec,
+      capMin: outcome.capMin,
       finished: isAmrap ? true : !capped,
       repsDone: capped ? numOrNull($('#f-wod-repsdone').value) : null,
       rounds: isAmrap ? numOrNull($('#f-wod-rounds').value) : null,
@@ -2411,8 +2431,8 @@ function bindEvents() {
   $('#btn-delete').addEventListener('click', removeSession);
   $('#f-wod-format').addEventListener('change', refreshWodFields);
 
-  document.querySelectorAll('#wod-outcome .seg').forEach((b) => {
-    b.addEventListener('click', () => setWodOutcome(b.dataset.outcome));
+  ['#f-wod-cap', '#f-wod-min', '#f-wod-sec'].forEach((sel) => {
+    $(sel).addEventListener('input', refreshWodFields);
   });
 
   document.querySelectorAll('#wod-scaling .seg').forEach((b) => {

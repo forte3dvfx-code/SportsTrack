@@ -1029,3 +1029,17 @@ button:disabled {
   font-size: 11px;
   font-weight: 600;
 }
+
+/* Resultado calculado a partir do tempo contra o limite */
+.outcome-note {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--ink-faint);
+  color: var(--ink-dim);
+}
+
+.outcome-note.is-done { border-left-color: var(--load); }
+.outcome-note.is-capped { border-left-color: var(--oxide); }
