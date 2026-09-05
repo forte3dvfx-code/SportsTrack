@@ -915,3 +915,117 @@ button:disabled {
 .diet-swatch.no { background: transparent; border-color: var(--oxide); }
 
 .data-table .muted { color: var(--ink-faint); }
+
+/* ============================================================
+   Percentagem do PR, tira de resultados e matriz Rx × tempo
+   ============================================================ */
+
+.row-1 { display: grid; grid-template-columns: 1fr; gap: 10px; }
+
+.period-field { margin-bottom: 14px; }
+
+/* Campo de percentagem no cabeçalho de cada exercício */
+.pct-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pct-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  flex-shrink: 0;
+}
+
+.pct-row input {
+  width: 72px;
+  flex-shrink: 0;
+  padding: 7px 10px;
+  background: var(--ground);
+  font-family: var(--mono);
+}
+
+.pct-hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legend-item em {
+  font-style: normal;
+  color: var(--ink-faint);
+  margin-left: 3px;
+}
+
+/* Tira de tentativas */
+.strip-host { margin-bottom: 14px; }
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.strip-cell {
+  min-width: 30px;
+  height: 26px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: var(--c);
+  border: 1px solid var(--c);
+  color: #0E1116;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.strip-cell.hollow {
+  background: transparent;
+  color: var(--c);
+}
+
+/* Matriz escala × resultado */
+.matrix { margin-bottom: 14px; }
+
+.matrix td, .matrix th { text-align: center; padding: 10px 6px; }
+.matrix td:first-child, .matrix th:first-child { text-align: left; }
+
+.matrix td b {
+  font-family: var(--mono);
+  font-size: 19px;
+  color: var(--ink);
+  display: block;
+  line-height: 1.2;
+}
+
+.matrix-sub {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.matrix-empty { color: var(--ink-faint); }
+
+/* Etiqueta de escala na tabela de tentativas */
+.badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--c);
+  color: var(--c);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+}

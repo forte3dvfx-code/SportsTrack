@@ -294,6 +294,40 @@ function renderHeatmap(host, counts, opts) {
   host.appendChild(svg);
 }
 
+/* Tira de resultados: um quadrado por tentativa, da mais antiga para a mais
+ * recente. Para respostas categóricas (dentro do tempo / cap) uma linha não
+ * diz nada — o padrão vê-se melhor numa sequência de blocos. */
+function renderStrip(host, items, opts) {
+  host.innerHTML = '';
+  opts = opts || {};
+
+  if (!items.length) {
+    host.innerHTML = '<p class="chart-empty">Sem tentativas.</p>';
+    return;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'strip';
+
+  items.forEach((it) => {
+    const cell = document.createElement('span');
+    cell.className = 'strip-cell' + (it.hollow ? ' hollow' : '');
+    cell.style.setProperty('--c', it.color);
+    cell.title = it.title || '';
+    cell.textContent = it.label || '';
+    wrap.appendChild(cell);
+  });
+
+  host.appendChild(wrap);
+
+  if (opts.caption) {
+    const p = document.createElement('p');
+    p.className = 'chart-caption';
+    p.textContent = opts.caption;
+    host.appendChild(p);
+  }
+}
+
 function shortDate(iso) {
   const parts = String(iso).split('-');
   return parts.length === 3 ? parts[2] + '/' + parts[1] : iso;
@@ -302,5 +336,6 @@ function shortDate(iso) {
 const Chart = {
   line: renderLineChart,
   bar: renderBarChart,
-  heatmap: renderHeatmap
+  heatmap: renderHeatmap,
+  strip: renderStrip
 };

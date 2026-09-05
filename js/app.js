@@ -9,15 +9,27 @@ const MEASURE_LABELS = {
   armR: 'Braço direito', thighR: 'Coxa direita', neck: 'Pescoço'
 };
 
-/* Intenção marcada à mão em cada sessão. É o que permite ler um dia leve
- * como dia leve e não como regressão. Sessões antigas não têm o campo e
- * ficam em 'por marcar', separadas das outras nas contas. */
+/* A faixa deixou de ser uma etiqueta escolhida e passou a sair da
+ * percentagem do PR a que trabalhaste. Marcas 78% e a app sabe que foi
+ * trabalho de base; marcas 96% e sabe que foi tentativa de máximo. */
+function bandFromPct(pct) {
+  if (pct == null || !isFinite(pct)) return null;
+  if (pct >= 95) return 'teste';
+  if (pct >= 83) return 'pesado';
+  if (pct >= 65) return 'moderado';
+  return 'leve';
+}
+
+const BAND_RANGES = {
+  leve: '< 65%', moderado: '65–82%', pesado: '83–94%', teste: '≥ 95%', '': '—'
+};
+
 const INTENTS = {
   leve:      { label: 'Leve',      color: '#6E8AA8' },
   moderado:  { label: 'Moderado',  color: '#4A90D9' },
   pesado:    { label: 'Pesado',    color: '#C2543E' },
   teste:     { label: 'Teste PR',  color: '#E9E7E2' },
-  '':        { label: 'Por marcar', color: '#5C6675' }
+  '':        { label: 'Sem referência', color: '#5C6675' }
 };
 
 const INTENT_ORDER = ['leve', 'moderado', 'pesado', 'teste', ''];
@@ -27,6 +39,7 @@ let exercisesById = {};      // atalho id -> registo
 let wodNamesSeen = [];       // alimenta o autocompletar de nomes de WOD
 
 let wodOutcome = 'finished'; // 'finished' | 'capped', escolhido no editor
+let wodScaling = 'rx';       // 'rxplus' | 'rx' | 'scaled'
 let editor = null;           // estado do editor de sessão
 let bodyEditor = null;       // estado do editor de medição
 
@@ -47,7 +60,8 @@ async function init() {
   await renderDietGrid();
   await refreshBackupState();
   registerServiceWorker();
-  maybeAutoBackup();   // não bloqueia o arranque: corre em segundo plano
+  await switchTab('evolucao');   // a app abre na leitura, não no registo
+  maybeAutoBackup();            // não bloqueia o arranque: corre em segundo plano
 }
 
 function indexExercises() {
@@ -264,12 +278,11 @@ async function openEditor(sessionId) {
   $('#f-calories').value = session && session.calories != null ? session.calories : '';
   $('#f-avghr').value = session && session.avgHr != null ? session.avgHr : '';
   $('#f-notes').value = session ? (session.notes || '') : '';
-  $('#f-intent').value = session ? (session.intent || 'moderado') : 'moderado';
 
   const w = wods[0] || null;
   $('#f-wod-name').value = w ? (w.name || '') : '';
   $('#f-wod-format').value = w ? w.format : 'forTime';
-  $('#f-wod-scaling').value = w ? (w.scaling || 'rx') : 'rx';
+  setWodScaling(w ? (w.scaling || 'rx') : 'rx');
   $('#f-wod-min').value = w && w.timeSec != null ? Math.floor(w.timeSec / 60) : '';
   $('#f-wod-sec').value = w && w.timeSec != null ? w.timeSec % 60 : '';
   $('#f-wod-rounds').value = w && w.rounds != null ? w.rounds : '';
@@ -302,7 +315,11 @@ function groupSets(sets) {
   const byExercise = {};
   sets.forEach((s) => {
     if (!byExercise[s.exerciseId]) {
-      byExercise[s.exerciseId] = { exerciseId: s.exerciseId, sets: [] };
+      byExercise[s.exerciseId] = {
+        exerciseId: s.exerciseId,
+        pctPr: s.pctPr != null ? s.pctPr : null,
+        sets: []
+      };
       groups.push(byExercise[s.exerciseId]);
     }
     byExercise[s.exerciseId].sets.push({
@@ -321,6 +338,13 @@ function fillWodNames() {
     const opt = document.createElement('option');
     opt.value = n;
     dl.appendChild(opt);
+  });
+}
+
+function setWodScaling(value) {
+  wodScaling = value;
+  document.querySelectorAll('#wod-scaling .seg').forEach((b) => {
+    b.classList.toggle('is-active', b.dataset.scaling === value);
   });
 }
 
@@ -370,6 +394,36 @@ function renderGroups() {
     head.appendChild(remove);
     el.appendChild(head);
 
+    // Percentagem do PR a que este movimento foi trabalhado. Em branco,
+    // a app calcula pela carga contra o teu melhor registo — mas o valor
+    // que escreveres ganha sempre, porque só tu sabes o plano do dia.
+    const pctRow = document.createElement('div');
+    pctRow.className = 'pct-row';
+    const pctLabel = document.createElement('span');
+    pctLabel.className = 'pct-label';
+    pctLabel.textContent = '% do PR';
+    const pctInput = document.createElement('input');
+    pctInput.type = 'number';
+    pctInput.inputMode = 'numeric';
+    pctInput.min = '0';
+    pctInput.max = '150';
+    pctInput.step = '1';
+    pctInput.placeholder = 'auto';
+    pctInput.value = group.pctPr != null ? group.pctPr : '';
+    pctInput.setAttribute('aria-label', 'Percentagem do PR para ' + exerciseName(group.exerciseId));
+    pctInput.addEventListener('input', () => {
+      group.pctPr = numOrNull(pctInput.value);
+      pctHint.textContent = bandHintFor(group.pctPr);
+    });
+    const pctHint = document.createElement('span');
+    pctHint.className = 'pct-hint';
+    pctHint.textContent = bandHintFor(group.pctPr);
+
+    pctRow.appendChild(pctLabel);
+    pctRow.appendChild(pctInput);
+    pctRow.appendChild(pctHint);
+    el.appendChild(pctRow);
+
     group.sets.forEach((set, si) => el.appendChild(buildSetRow(group, gi, set, si)));
 
     const actions = document.createElement('div');
@@ -401,6 +455,12 @@ function renderGroups() {
     el.appendChild(actions);
     host.appendChild(el);
   });
+}
+
+function bandHintFor(pct) {
+  const band = bandFromPct(pct);
+  if (!band) return 'calcula pela carga';
+  return INTENTS[band].label;
 }
 
 function buildSetRow(group, gi, set, si) {
@@ -473,7 +533,6 @@ async function saveEditor() {
     calories: numOrNull($('#f-calories').value),
     avgHr: numOrNull($('#f-avghr').value),
     notes: $('#f-notes').value.trim(),
-    intent: $('#f-intent').value,
     source: 'manual',    // campo preparado para quando houver importação Garmin
     externalId: null,
     updatedAt: new Date().toISOString()
@@ -489,6 +548,7 @@ async function saveEditor() {
         id: DB.uid(),
         sessionId: session.id,
         exerciseId: group.exerciseId,
+        pctPr: group.pctPr != null ? group.pctPr : null,
         order: order++,
         reps: s.reps != null ? s.reps : 0,
         weightKg: s.weightKg != null ? s.weightKg : 0,
@@ -525,7 +585,7 @@ async function saveEditor() {
       rounds: isAmrap ? numOrNull($('#f-wod-rounds').value) : null,
       extraReps: isAmrap ? numOrNull($('#f-wod-extra').value) : null,
       weightKg: numOrNull($('#f-wod-weight').value),
-      scaling: $('#f-wod-scaling').value,
+      scaling: wodScaling,
       description: wodDesc
     });
   }
@@ -922,7 +982,7 @@ function epley(weightKg, reps) {
 
 let weeklyTarget = 5;        // alvo de sessões por semana, editável em Definições
 let currentLens = 'sessoes';
-let currentPeriodDays = 90;
+let currentPeriodDays = 0;   // 0 = todos os treinos registados
 
 /* Só recalcula a lente visível: os gráficos das outras não estão no ecrã
  * e recalcular tudo a cada troca era trabalho deitado fora. */
@@ -972,9 +1032,7 @@ async function renderEvolution() {
 /* ---------- Lente: sessões ---------- */
 
 function renderSessionsLens(allSessions) {
-  document.querySelectorAll('#period-picker .seg').forEach((b) => {
-    b.classList.toggle('is-active', Number(b.dataset.days) === currentPeriodDays);
-  });
+  $('#period-select').value = String(currentPeriodDays);
 
   // Ordem crescente: os gráficos leem-se da esquerda para a direita.
   const inPeriod = filterByPeriod(allSessions, currentPeriodDays)
@@ -1206,6 +1264,7 @@ function renderSessionTiles(allSessions, inPeriod) {
   if (currentPeriodDays) {
     weeks = currentPeriodDays / 7;
   } else if (allSessions.length) {
+    // Sem filtro, a base é o teu histórico todo, da primeira sessão até hoje.
     const first = new Date(allSessions[allSessions.length - 1].date + 'T00:00:00');
     weeks = Math.max(1, (Date.now() - first.getTime()) / (7 * 86400000));
   } else {
@@ -1398,11 +1457,28 @@ function summariseByDate(sets, dateBySession, intentBySession, useReps) {
         date: date,
         score: score,
         set: s,
-        intent: intentBySession[s.sessionId] || ''
+        pctPr: s.pctPr != null ? s.pctPr : null,
+        legacyIntent: intentBySession[s.sessionId] || ''
       };
     }
   });
-  return Object.keys(byDate).sort().map((d) => byDate[d]);
+
+  const entries = Object.keys(byDate).sort().map((d) => byDate[d]);
+
+  // Percentagem em falta: calcula-se pela carga contra o melhor registo
+  // até àquela data. Usar o PR actual reclassificaria o passado todo
+  // sempre que batesses um recorde novo.
+  let best = 0;
+  entries.forEach((e) => {
+    if (e.pctPr == null && best > 0 && !useReps) {
+      e.pctPr = (e.set.weightKg / best) * 100;
+      e.pctAuto = true;
+    }
+    e.band = bandFromPct(e.pctPr) || e.legacyIntent || '';
+    best = Math.max(best, e.score);
+  });
+
+  return entries;
 }
 
 /* Recorde acumulado até cada data. Serve de referência no gráfico e é o que
@@ -1444,7 +1520,7 @@ function renderLoadedProgress(loaded, ignoredCount, dateBySession, intentBySessi
   const points = entries.map((e) => ({
     x: e.date,
     y: e.score,
-    color: INTENTS[e.intent] ? INTENTS[e.intent].color : INTENTS[''].color
+    color: INTENTS[e.band] ? INTENTS[e.band].color : INTENTS[''].color
   }));
 
   Chart.line($('#chart-strength'), points, {
@@ -1457,8 +1533,8 @@ function renderLoadedProgress(loaded, ignoredCount, dateBySession, intentBySessi
   renderBandRows(entries, (e) => e.set.weightKg + ' kg');
 
   let hint = 'Cada ponto é a melhor série do dia, convertida em 1RM estimado ' +
-    '(Epley). A cor diz a intenção com que marcaste a sessão; a linha tracejada ' +
-    'é o teu recorde acumulado. Um ponto baixo num dia leve não é queda.';
+    '(Epley). A cor vem da percentagem do PR a que trabalhaste; a linha tracejada ' +
+    'é o teu recorde acumulado. Um ponto baixo a 55% não é queda, é um dia leve.';
   if (ignoredCount > 0) {
     hint += ' ' + ignoredCount + (ignoredCount === 1 ? ' série sem carga ficou' : ' séries sem carga ficaram') +
       ' de fora.';
@@ -1483,7 +1559,7 @@ function renderBodyweightProgress(mine, dateBySession, intentBySession) {
   const points = entries.map((e) => ({
     x: e.date,
     y: e.score,
-    color: INTENTS[e.intent] ? INTENTS[e.intent].color : INTENTS[''].color
+    color: INTENTS[e.band] ? INTENTS[e.band].color : INTENTS[''].color
   }));
 
   Chart.line($('#chart-strength'), points, {
@@ -1521,14 +1597,15 @@ function renderBodyweightProgress(mine, dateBySession, intentBySession) {
 
 function renderIntentLegend(entries) {
   const present = {};
-  entries.forEach((e) => { present[e.intent] = true; });
+  entries.forEach((e) => { present[e.band] = true; });
 
   const host = $('#intent-legend');
   host.innerHTML = '';
   INTENT_ORDER.filter((k) => present[k]).forEach((k) => {
     const item = document.createElement('span');
     item.className = 'legend-item';
-    item.innerHTML = '<i style="background:' + INTENTS[k].color + '"></i>' + INTENTS[k].label;
+    item.innerHTML = '<i style="background:' + INTENTS[k].color + '"></i>' +
+      INTENTS[k].label + (BAND_RANGES[k] && k ? ' <em>' + BAND_RANGES[k] + '</em>' : '');
     host.appendChild(item);
   });
 }
@@ -1540,7 +1617,7 @@ function renderBandRows(entries, formatLoad) {
   host.innerHTML = '';
 
   INTENT_ORDER.forEach((key) => {
-    const inBand = entries.filter((e) => e.intent === key);
+    const inBand = entries.filter((e) => e.band === key);
     if (!inBand.length) return;
 
     const avgLoad = inBand.reduce((a, e) => a + e.set.weightKg, 0) / inBand.length;
@@ -1549,11 +1626,18 @@ function renderBandRows(entries, formatLoad) {
     const mark = trendMark(trend);
     const last = inBand[inBand.length - 1];
 
+    const withPct = inBand.filter((e) => e.pctPr != null);
+    const avgPct = withPct.length
+      ? withPct.reduce((a, e) => a + e.pctPr, 0) / withPct.length
+      : null;
+
     const row = document.createElement('div');
     row.className = 'pr-row band-row';
     row.innerHTML =
       '<span class="pr-label"><i class="band-dot" style="background:' + INTENTS[key].color + '"></i>' +
-        INTENTS[key].label + ' · ' + inBand.length + (inBand.length === 1 ? ' sessão' : ' sessões') + '</span>' +
+        INTENTS[key].label +
+        (avgPct != null ? ' · ' + Math.round(avgPct) + '% médio' : '') +
+        ' · ' + inBand.length + (inBand.length === 1 ? ' sessão' : ' sessões') + '</span>' +
       '<span class="pr-value">' + (usesLoad ? avgLoad.toFixed(1) + ' kg' : '—') + '</span>' +
       '<span class="pr-date">última ' + escapeHtml(formatLoad(last)) + ' · ' +
         '<b class="trend-' + mark.cls + '">' + mark.text + '</b></span>';
@@ -1563,8 +1647,9 @@ function renderBandRows(entries, formatLoad) {
   if (host.children.length) {
     const note = document.createElement('p');
     note.className = 'hint';
-    note.textContent = 'Carga média por faixa e tendência das sessões recentes ' +
-      'contra as antigas. Menos de 4 sessões numa faixa não dá tendência fiável.';
+    note.textContent = 'A faixa vem da percentagem do PR que escreveste em cada ' +
+      'exercício; em branco, é calculada pela carga contra o teu melhor registo até ' +
+      'à data. Menos de 4 sessões numa faixa não dá tendência fiável.';
     host.appendChild(note);
   }
 }
@@ -1739,6 +1824,22 @@ function kcalPerMin(session) {
   return session.calories / session.durationMin;
 }
 
+/* As quatro combinações possíveis de escala e resultado. É esta cruz que
+ * responde a "como reagi ao treino": Rx dentro do tempo e Scaled fora do
+ * tempo são mundos diferentes, e a média de ambos não significa nada. */
+const OUTCOMES = {
+  rxIn:      { label: 'Rx · dentro',     short: 'R✓', color: 'var(--load)' },
+  rxOut:     { label: 'Rx · cap',        short: 'R✕', color: 'var(--oxide)' },
+  scaledIn:  { label: 'Scaled · dentro', short: 'S✓', color: '#6E8AA8' },
+  scaledOut: { label: 'Scaled · cap',    short: 'S✕', color: '#5C6675' }
+};
+
+function outcomeKey(w) {
+  const isRx = (w.scaling === 'rx' || w.scaling === 'rxplus');
+  const inTime = (w.finished !== false);
+  return isRx ? (inTime ? 'rxIn' : 'rxOut') : (inTime ? 'scaledIn' : 'scaledOut');
+}
+
 function renderWodSection(allWods, dateBySession, sessionById) {
   const select = $('#ev-wod');
   const named = allWods.filter((w) => w.name);
@@ -1758,6 +1859,8 @@ function renderWodSection(allWods, dateBySession, sessionById) {
 
   if (!names.length) {
     select.hidden = true;
+    $('#wod-strip').innerHTML = '';
+    $('#wod-matrix').innerHTML = '';
     $('#chart-wod').innerHTML = '<p class="chart-empty">Regista um WOD com nome para o comparares.</p>';
     $('#wod-hint').textContent = '';
     $('#wod-intensity-hint').textContent = '';
@@ -1774,39 +1877,137 @@ function renderWodSection(allWods, dateBySession, sessionById) {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const isAmrap = attempts.filter((a) => a.wod.format === 'amrap').length > attempts.length / 2;
-  const finished = attempts.filter((a) => a.wod.finished !== false && a.wod.timeSec != null);
-  const capped = attempts.filter((a) => a.wod.finished === false);
+  const hasCap = attempts.some((a) => a.wod.capMin != null || a.wod.finished === false);
 
-  // Tentativas concluídas e tentativas com cap não são a mesma moeda:
-  // um cap aos 12:00 não é "pior que 11:50", é outra coisa. A linha só
-  // usa as concluídas; as que bateram no limite aparecem na tabela.
-  if (isAmrap) {
-    const pts = attempts.filter((a) => a.wod.rounds != null)
-      .map((a) => ({ x: a.date, y: a.wod.rounds }));
-    Chart.line($('#chart-wod'), pts, { format: (v) => v.toFixed(0) + ' rondas', color: 'var(--oxide)' });
-    $('#wod-hint').textContent = 'Mais rondas é melhor.';
-  } else if (finished.length) {
-    const pts = finished.map((a) => ({ x: a.date, y: a.wod.timeSec }));
-    Chart.line($('#chart-wod'), pts, { format: (v) => fmtTime(v), color: 'var(--oxide)' });
-    $('#wod-hint').textContent = 'Só as tentativas concluídas entram na linha — menos tempo é melhor.' +
-      (capped.length ? ' ' + capped.length + (capped.length === 1 ? ' tentativa bateu' : ' tentativas bateram') +
-        ' no limite e está' + (capped.length === 1 ? '' : 'ão') + ' só na tabela.' : '');
-  } else if (capped.length) {
-    const pts = capped.filter((a) => a.wod.repsDone != null)
-      .map((a) => ({ x: a.date, y: a.wod.repsDone }));
-    Chart.line($('#chart-wod'), pts, { format: (v) => v.toFixed(0) + ' reps', color: 'var(--oxide)' });
-    $('#wod-hint').textContent = 'Nunca concluíste dentro do limite, por isso a linha são as repetições feitas.';
-  } else {
-    $('#chart-wod').innerHTML = '<p class="chart-empty">Sem resultados registados.</p>';
-    $('#wod-hint').textContent = '';
-  }
-
+  renderOutcomeStrip(attempts, isAmrap);
+  renderOutcomeMatrix(attempts, isAmrap);
+  renderWodChart(attempts, isAmrap, hasCap);
   renderWodTable(attempts, tbody);
 }
 
-/* Tabela de tentativas: é aqui que o tempo se cruza com o esforço.
- * Acabar três minutos mais rápido com menos % de FC máxima é uma melhoria
- * muito maior do que acabar três minutos mais rápido a sofrer o mesmo. */
+/* Sequência de tentativas, da mais antiga para a mais recente. Lê-se de
+ * relance se estás a passar mais vezes dentro do tempo. */
+function renderOutcomeStrip(attempts, isAmrap) {
+  const host = $('#wod-strip');
+  if (isAmrap) { host.innerHTML = ''; return; }
+
+  const items = attempts.map((a) => {
+    const key = outcomeKey(a.wod);
+    return {
+      color: OUTCOMES[key].color,
+      label: OUTCOMES[key].short,
+      hollow: (key === 'rxOut'),
+      title: prettyDate(a.date) + ' · ' + OUTCOMES[key].label + ' · ' + (wodResult(a.wod) || '—')
+    };
+  });
+
+  const inTime = attempts.filter((a) => a.wod.finished !== false).length;
+  Chart.strip(host, items, {
+    caption: inTime + ' de ' + attempts.length + ' dentro do tempo'
+  });
+}
+
+function renderOutcomeMatrix(attempts, isAmrap) {
+  const host = $('#wod-matrix');
+  host.innerHTML = '';
+  if (isAmrap || !attempts.length) return;
+
+  const count = { rxIn: [], rxOut: [], scaledIn: [], scaledOut: [] };
+  attempts.forEach((a) => { count[outcomeKey(a.wod)].push(a); });
+
+  // Tempo médio das que acabaram, para a célula dizer mais que uma contagem.
+  const avgTime = (list) => {
+    const done = list.filter((a) => a.wod.timeSec != null && a.wod.finished !== false);
+    if (!done.length) return null;
+    return done.reduce((s, a) => s + a.wod.timeSec, 0) / done.length;
+  };
+  const avgReps = (list) => {
+    const done = list.filter((a) => a.wod.repsDone != null);
+    if (!done.length) return null;
+    return done.reduce((s, a) => s + a.wod.repsDone, 0) / done.length;
+  };
+
+  const table = document.createElement('table');
+  table.className = 'data-table matrix';
+  table.innerHTML =
+    '<thead><tr><th></th><th>Dentro do tempo</th><th>Bateu no cap</th></tr></thead>' +
+    '<tbody>' +
+      '<tr><td>Rx</td>' +
+        matrixCell(count.rxIn, avgTime(count.rxIn), null) +
+        matrixCell(count.rxOut, null, avgReps(count.rxOut)) +
+      '</tr>' +
+      '<tr><td>Scaled</td>' +
+        matrixCell(count.scaledIn, avgTime(count.scaledIn), null) +
+        matrixCell(count.scaledOut, null, avgReps(count.scaledOut)) +
+      '</tr>' +
+    '</tbody>';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+  wrap.appendChild(table);
+  host.appendChild(wrap);
+}
+
+function matrixCell(list, avgT, avgR) {
+  if (!list.length) return '<td class="matrix-empty">—</td>';
+  let detail = '';
+  if (avgT != null) detail = '<span class="matrix-sub">' + fmtTime(avgT) + ' médio</span>';
+  else if (avgR != null) detail = '<span class="matrix-sub">' + Math.round(avgR) + ' reps médias</span>';
+  return '<td><b>' + list.length + '</b>' + detail + '</td>';
+}
+
+/* Com tempo limite, a linha de tempos não serve: quem bate no cap fica
+ * sempre com o mesmo valor. A intensidade em kcal/min é que mostra como
+ * reagiste, e a tira acima já diz se passaste ou não. */
+function renderWodChart(attempts, isAmrap, hasCap) {
+  const host = $('#chart-wod');
+
+  if (isAmrap) {
+    const pts = attempts.filter((a) => a.wod.rounds != null)
+      .map((a) => ({ x: a.date, y: a.wod.rounds, color: OUTCOMES[outcomeKey(a.wod)].color }));
+    Chart.line(host, pts, { format: (v) => v.toFixed(0) + ' rondas', pathColor: 'var(--ink-faint)' });
+    $('#wod-hint').textContent = 'Mais rondas é melhor.';
+    return;
+  }
+
+  if (hasCap) {
+    const pts = attempts
+      .map((a) => ({
+        x: a.date,
+        y: kcalPerMin(a.session),
+        color: OUTCOMES[outcomeKey(a.wod)].color
+      }))
+      .filter((p) => p.y != null);
+
+    if (pts.length) {
+      Chart.line(host, pts, {
+        format: (v) => v.toFixed(1) + ' kcal/min',
+        pathColor: 'var(--ink-faint)'
+      });
+      $('#wod-hint').textContent =
+        'Com tempo limite, o tempo diz pouco: quem bate no cap fica sempre no mesmo ' +
+        'valor. A linha é a intensidade em kcal/min e a cor é o resultado — a tira ' +
+        'acima mostra se passaste dentro do tempo.';
+    } else {
+      host.innerHTML = '<p class="chart-empty">Regista calorias e duração para ver a intensidade.</p>';
+      $('#wod-hint').textContent = 'A tira acima já mostra o histórico de dentro do tempo.';
+    }
+    return;
+  }
+
+  const finished = attempts.filter((a) => a.wod.finished !== false && a.wod.timeSec != null);
+  if (finished.length) {
+    const pts = finished.map((a) => ({
+      x: a.date, y: a.wod.timeSec, color: OUTCOMES[outcomeKey(a.wod)].color
+    }));
+    Chart.line(host, pts, { format: (v) => fmtTime(v), pathColor: 'var(--ink-faint)' });
+    $('#wod-hint').textContent = 'Sem tempo limite definido — menos tempo é melhor.';
+  } else {
+    host.innerHTML = '<p class="chart-empty">Sem resultados registados.</p>';
+    $('#wod-hint').textContent = '';
+  }
+}
+
 function renderWodTable(attempts, tbody) {
   tbody.innerHTML = '';
 
@@ -1818,13 +2019,15 @@ function renderWodTable(attempts, tbody) {
   attempts.slice().reverse().forEach((a) => {
     const pct = pctMaxHr(a.session ? a.session.avgHr : null);
     const kcal = kcalPerMin(a.session);
+    const key = outcomeKey(a.wod);
     const capped = a.wod.finished === false;
 
     const tr = document.createElement('tr');
     tr.innerHTML =
       '<td>' + prettyDate(a.date) + '</td>' +
       '<td' + (capped ? ' class="capped"' : '') + '>' + escapeHtml(wodResult(a.wod) || '—') + '</td>' +
-      '<td>' + scalingLabel(a.wod) + '</td>' +
+      '<td><span class="badge" style="--c:' + OUTCOMES[key].color + '">' +
+        scalingLabel(a.wod) + '</span></td>' +
       '<td>' + (pct != null ? Math.round(pct) + '%' : '—') + '</td>' +
       '<td>' + (kcal != null ? kcal.toFixed(1) : '—') + '</td>';
     tbody.appendChild(tr);
@@ -2120,9 +2323,10 @@ async function exportCSV(kind) {
       .filter((r) => r.date)
       .sort((a, b) => a.date.localeCompare(b.date) || a.s.order - b.s.order);
     csv = toCSV(
-      ['data', 'movimento', 'ordem', 'reps', 'carga_kg', 'aquecimento', 'volume_kg', 'e1rm_kg'],
+      ['data', 'movimento', 'ordem', 'reps', 'carga_kg', 'pct_pr', 'aquecimento', 'volume_kg', 'e1rm_kg'],
       rows.map((r) => [
         r.date, exerciseName(r.s.exerciseId), r.s.order, r.s.reps, r.s.weightKg,
+        r.s.pctPr != null ? r.s.pctPr : '',
         r.s.warmup ? 'sim' : 'nao',
         (r.s.reps * r.s.weightKg).toFixed(1),
         r.s.warmup ? '' : epley(r.s.weightKg, r.s.reps).toFixed(1)
@@ -2211,6 +2415,10 @@ function bindEvents() {
     b.addEventListener('click', () => setWodOutcome(b.dataset.outcome));
   });
 
+  document.querySelectorAll('#wod-scaling .seg').forEach((b) => {
+    b.addEventListener('click', () => setWodScaling(b.dataset.scaling));
+  });
+
   $('#f-exercise-pick').addEventListener('change', (ev) => {
     const value = ev.target.value;
     ev.target.value = '';
@@ -2264,11 +2472,9 @@ function bindEvents() {
     });
   });
 
-  document.querySelectorAll('#period-picker .seg').forEach((b) => {
-    b.addEventListener('click', () => {
-      currentPeriodDays = Number(b.dataset.days);
-      renderEvolution();
-    });
+  $('#period-select').addEventListener('change', (ev) => {
+    currentPeriodDays = Number(ev.target.value);
+    renderEvolution();
   });
 
   // Definições
@@ -2367,6 +2573,7 @@ function addGroup(exerciseId) {
   } else {
     editor.groups.push({
       exerciseId: exerciseId,
+      pctPr: null,
       sets: [{ reps: null, weightKg: null, warmup: false }]
     });
   }

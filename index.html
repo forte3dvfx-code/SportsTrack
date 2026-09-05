@@ -76,12 +76,20 @@
     <!-- ---------- LENTE: SESSÕES ---------- -->
     <div data-lens-panel="sessoes">
 
-      <div class="segmented small" id="period-picker">
-        <button class="seg" data-days="30">30 dias</button>
-        <button class="seg is-active" data-days="90">90 dias</button>
-        <button class="seg" data-days="365">1 ano</button>
-        <button class="seg" data-days="0">Tudo</button>
-      </div>
+      <label class="field period-field">
+        <span class="label">Período</span>
+        <select id="period-select">
+          <option value="0" selected>Todos os treinos</option>
+          <option value="5">Últimos 5 dias</option>
+          <option value="10">Últimos 10 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="30">Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+          <option value="180">Últimos 6 meses</option>
+          <option value="365">Último ano</option>
+        </select>
+      </label>
 
       <div class="tiles" id="session-tiles"></div>
 
@@ -169,6 +177,8 @@
       <section class="panel">
         <h2>WOD</h2>
         <select id="ev-wod" aria-label="WOD a analisar"></select>
+        <div id="wod-strip" class="strip-host"></div>
+        <div id="wod-matrix"></div>
         <div id="chart-wod" class="chart-host"></div>
         <p class="hint" id="wod-hint"></p>
         <div class="table-wrap">
@@ -382,16 +392,6 @@
       <details class="block" open>
         <summary>Força</summary>
         <div class="block-body">
-          <label class="field">
-            <span class="label">Intenção do treino</span>
-            <select id="f-intent">
-              <option value="leve">Leve — técnica, volume, recuperação</option>
-              <option value="moderado" selected>Moderado — trabalho de base</option>
-              <option value="pesado">Pesado — perto do máximo</option>
-              <option value="teste">Teste — tentativa de PR</option>
-            </select>
-          </label>
-
           <div id="groups"></div>
 
           <div class="add-exercise">
@@ -422,7 +422,7 @@
             <datalist id="wod-names"></datalist>
           </label>
 
-          <div class="row-2">
+          <div class="row-1">
             <label class="field">
               <span class="label">Formato</span>
               <select id="f-wod-format">
@@ -432,14 +432,15 @@
                 <option value="other">Outro</option>
               </select>
             </label>
-            <label class="field">
-              <span class="label">Escala</span>
-              <select id="f-wod-scaling">
-                <option value="rxplus">Rx+</option>
-                <option value="rx">Rx</option>
-                <option value="scaled">Scaled</option>
-              </select>
-            </label>
+          </div>
+
+          <div class="field">
+            <span class="label">Fizeste Rx?</span>
+            <div class="segmented small" id="wod-scaling">
+              <button type="button" class="seg" data-scaling="rxplus">Rx+</button>
+              <button type="button" class="seg is-active" data-scaling="rx">Rx</button>
+              <button type="button" class="seg" data-scaling="scaled">Scaled</button>
+            </div>
           </div>
 
           <label class="field" id="wod-cap-field">
@@ -572,9 +573,9 @@
 </main>
 
 <nav class="tabbar" id="tabbar">
-  <button class="tab is-active" data-target="treino">Treino</button>
+  <button class="tab is-active" data-target="evolucao">Evolução</button>
+  <button class="tab" data-target="treino">Treino</button>
   <button class="tab" data-target="corpo">Corpo</button>
-  <button class="tab" data-target="evolucao">Evolução</button>
   <button class="tab" data-target="definicoes">Definições</button>
 </nav>
 
