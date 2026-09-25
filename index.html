@@ -70,6 +70,7 @@
     <div class="segmented" id="lens-picker" role="tablist">
       <button class="seg is-active" data-lens="sessoes" role="tab">Sessões</button>
       <button class="seg" data-lens="forca" role="tab">Força</button>
+      <button class="seg" data-lens="wod" role="tab">WOD</button>
       <button class="seg" data-lens="corpo" role="tab">Corpo</button>
     </div>
 
@@ -174,6 +175,10 @@
         <p class="hint">Soma de repetições × carga das séries de trabalho, últimas 12 semanas.</p>
       </section>
 
+    </div>
+
+    <!-- ---------- LENTE: WOD ---------- -->
+    <div data-lens-panel="wod" hidden>
       <section class="panel">
         <h2>WOD</h2>
         <select id="ev-wod" aria-label="WOD a analisar"></select>
@@ -189,7 +194,9 @@
             <tbody></tbody>
           </table>
         </div>
-        <p class="hint" id="wod-intensity-hint"></p>
+        <p class="hint" id="wod-intensity-hint">
+        </p>
+        <p class="hint">Toca numa linha para ver o treino em detalhe.</p>
       </section>
     </div>
 
@@ -477,14 +484,17 @@
             </label>
           </div>
 
-          <label class="field">
-            <span class="label">Carga <em>kg</em></span>
-            <input type="number" id="f-wod-weight" inputmode="decimal" min="0" step="0.5" placeholder="—">
-          </label>
+          <div class="field">
+            <span class="label">Movimentos</span>
+            <div id="wod-movements"></div>
+            <select id="f-wod-exercise-pick">
+              <option value="">Adicionar movimento…</option>
+            </select>
+          </div>
 
           <label class="field">
-            <span class="label">Descrição</span>
-            <textarea id="f-wod-desc" rows="3" placeholder="21-15-9 thrusters + pull-ups"></textarea>
+            <span class="label">Descrição <em>o que não cabe acima</em></span>
+            <textarea id="f-wod-desc" rows="2" placeholder="21-15-9, buy-in de 400 m, etc."></textarea>
           </label>
         </div>
       </details>
