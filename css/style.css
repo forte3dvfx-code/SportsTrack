@@ -1136,3 +1136,31 @@ button:disabled {
 @media (max-width: 380px) {
   .wod-move { grid-template-columns: 1fr 54px 54px auto; }
 }
+
+/* Rondas prescritas e nome do movimento como texto */
+.wod-move {
+  grid-template-columns: 1fr 62px 62px auto;
+}
+
+.wod-move-name {
+  font-size: 14px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 4px;
+}
+
+/* Um gráfico por medida, empilhados */
+.measure-block + .measure-block {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.measure-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}

@@ -229,15 +229,7 @@
 
       <section class="panel">
         <h2>Medidas</h2>
-        <select id="ev-measure" aria-label="Medida a analisar">
-          <option value="waist">Cintura</option>
-          <option value="hip">Anca</option>
-          <option value="chest">Peito</option>
-          <option value="armR">Braço direito</option>
-          <option value="thighR">Coxa direita</option>
-          <option value="neck">Pescoço</option>
-        </select>
-        <div id="chart-measure" class="chart-host"></div>
+        <div id="measures-host"></div>
       </section>
     </div>
   </section>
@@ -484,12 +476,18 @@
             </label>
           </div>
 
+          <label class="field" id="wod-rounds-planned-field">
+            <span class="label">Rondas prescritas <em>se as houver</em></span>
+            <input type="number" id="f-wod-rounds-planned" inputmode="numeric" min="0" step="1" placeholder="—">
+          </label>
+
           <div class="field">
             <span class="label">Movimentos</span>
             <div id="wod-movements"></div>
             <select id="f-wod-exercise-pick">
               <option value="">Adicionar movimento…</option>
             </select>
+            <p class="hint">Reps aceita um número ou um esquema como 21-15-9.</p>
           </div>
 
           <label class="field">

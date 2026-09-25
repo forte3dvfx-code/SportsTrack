@@ -299,6 +299,7 @@ async function openEditor(sessionId) {
   $('#f-wod-rounds').value = w && w.rounds != null ? w.rounds : '';
   $('#f-wod-extra').value = w && w.extraReps != null ? w.extraReps : '';
   $('#f-wod-cap').value = w && w.capMin != null ? w.capMin : '';
+  $('#f-wod-rounds-planned').value = w && w.roundsPlanned != null ? w.roundsPlanned : '';
   $('#f-wod-repsdone').value = w && w.repsDone != null ? w.repsDone : '';
   $('#f-wod-desc').value = w ? (w.description || '') : '';
 
@@ -399,6 +400,8 @@ function refreshWodFields() {
   $('#wod-round-fields').hidden = !isAmrap;
   $('#wod-time-fields').hidden = isAmrap;
   $('#wod-cap-field').hidden = isAmrap;
+  // Num AMRAP as rondas são o resultado, não a prescrição.
+  $('#wod-rounds-planned-field').hidden = isAmrap;
 
   const outcome = computeWodOutcome();
   const note = $('#wod-outcome-note');
@@ -508,9 +511,10 @@ function renderGroups() {
   });
 }
 
-/* Movimentos do WOD. Ao contrário da força, aqui as repetições são texto
- * livre ("21-15-9", "max", "400 m"): um WOD raramente tem um número só, e
- * forçar um campo numérico obrigava a escrever o esquema na descrição. */
+/* Movimentos do WOD, com o mesmo padrão dos grupos de força: o nome vem do
+ * catálogo e fica como texto, não como selector — escolheste-o ao adicionar.
+ * As repetições são texto de propósito: um WOD raramente tem um número só,
+ * e "21-15-9" tem de caber sem ir parar à descrição. */
 function renderWodMovements() {
   const host = $('#wod-movements');
   host.innerHTML = '';
@@ -519,28 +523,16 @@ function renderWodMovements() {
     const row = document.createElement('div');
     row.className = 'wod-move';
 
-    const name = document.createElement('select');
+    const name = document.createElement('span');
     name.className = 'wod-move-name';
-    name.setAttribute('aria-label', 'Movimento ' + (i + 1));
-    const blank = document.createElement('option');
-    blank.value = '';
-    blank.textContent = '—';
-    name.appendChild(blank);
-    exercises.forEach((e) => {
-      const opt = document.createElement('option');
-      opt.value = e.id;
-      opt.textContent = e.name;
-      name.appendChild(opt);
-    });
-    name.value = m.exerciseId || '';
-    name.addEventListener('change', () => { m.exerciseId = name.value || null; });
+    name.textContent = m.exerciseId ? exerciseName(m.exerciseId) : 'Movimento';
 
     const reps = document.createElement('input');
     reps.type = 'text';
     reps.className = 'wod-move-reps';
     reps.placeholder = 'reps';
     reps.value = m.reps || '';
-    reps.setAttribute('aria-label', 'Repetições do movimento ' + (i + 1));
+    reps.setAttribute('aria-label', 'Repetições de ' + name.textContent);
     reps.addEventListener('input', () => { m.reps = reps.value; });
 
     const kg = document.createElement('input');
@@ -551,14 +543,14 @@ function renderWodMovements() {
     kg.step = '0.5';
     kg.placeholder = 'kg';
     kg.value = m.weightKg != null ? m.weightKg : '';
-    kg.setAttribute('aria-label', 'Carga do movimento ' + (i + 1));
+    kg.setAttribute('aria-label', 'Carga de ' + name.textContent);
     kg.addEventListener('input', () => { m.weightKg = numOrNull(kg.value); });
 
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'set-remove';
     del.textContent = '×';
-    del.setAttribute('aria-label', 'Remover movimento ' + (i + 1));
+    del.setAttribute('aria-label', 'Remover ' + name.textContent);
     del.addEventListener('click', () => {
       wodMovements.splice(i, 1);
       renderWodMovements();
@@ -594,13 +586,17 @@ function fillWodExercisePicker() {
 /* Texto compacto dos movimentos, para cartões, tabelas e CSV. */
 function movementsText(w) {
   if (!w || !Array.isArray(w.movements) || !w.movements.length) return '';
-  return w.movements.map((m) => {
+  const body = w.movements.map((m) => {
     const parts = [];
     if (m.reps) parts.push(m.reps);
     parts.push(m.exerciseId ? exerciseName(m.exerciseId) : 'movimento');
     if (m.weightKg != null) parts.push('@ ' + m.weightKg + ' kg');
     return parts.join(' ');
   }).join(' + ');
+
+  return (w.roundsPlanned != null && w.roundsPlanned > 0)
+    ? w.roundsPlanned + ' rondas: ' + body
+    : body;
 }
 
 function bandHintFor(pct) {
@@ -708,6 +704,7 @@ async function saveEditor() {
   const wodDesc = $('#f-wod-desc').value.trim();
   const hasMovements = wodMovements.some((m) => m.exerciseId || m.reps || m.weightKg != null);
   if (wodName || wodDesc || hasMovements) {
+    // (as rondas prescritas sozinhas não chegam para criar um WOD)
     const format = $('#f-wod-format').value;
     const isAmrap = (format === 'amrap');
     const outcome = computeWodOutcome();
@@ -724,6 +721,7 @@ async function saveEditor() {
       repsDone: capped ? numOrNull($('#f-wod-repsdone').value) : null,
       rounds: isAmrap ? numOrNull($('#f-wod-rounds').value) : null,
       extraReps: isAmrap ? numOrNull($('#f-wod-extra').value) : null,
+      roundsPlanned: numOrNull($('#f-wod-rounds-planned').value),
       movements: wodMovements
         .filter((m) => m.exerciseId || m.reps || m.weightKg != null)
         .map((m) => ({
@@ -1912,13 +1910,44 @@ function renderWeightSection(body) {
   Chart.line($('#chart-weight'), points, { format: (v) => v.toFixed(1) + ' kg' });
 }
 
+/* Todas as medidas de uma vez. Com o selector, para comparar cintura e anca
+ * era preciso alternar e guardar os números de cabeça — que é o contrário
+ * do que um gráfico serve para fazer. */
 function renderMeasureSection(body) {
-  const key = $('#ev-measure').value;
-  const points = body
-    .filter((b) => b.measures && b.measures[key] != null)
-    .map((b) => ({ x: b.date, y: b.measures[key] }))
-    .sort((a, b) => a.x.localeCompare(b.x));
-  Chart.line($('#chart-measure'), points, { format: (v) => v.toFixed(1) + ' cm' });
+  const host = $('#measures-host');
+  host.innerHTML = '';
+
+  let drawn = 0;
+
+  Object.keys(MEASURE_LABELS).forEach((key) => {
+    const points = body
+      .filter((b) => b.measures && b.measures[key] != null)
+      .map((b) => ({ x: b.date, y: b.measures[key] }))
+      .sort((a, b) => a.x.localeCompare(b.x));
+
+    // Medidas que nunca registaste não ocupam espaço.
+    if (!points.length) return;
+
+    const block = document.createElement('div');
+    block.className = 'measure-block';
+
+    const title = document.createElement('h3');
+    title.className = 'measure-title';
+    title.textContent = MEASURE_LABELS[key];
+    block.appendChild(title);
+
+    const chart = document.createElement('div');
+    chart.className = 'chart-host';
+    block.appendChild(chart);
+
+    host.appendChild(block);
+    Chart.line(chart, points, { format: (v) => v.toFixed(1) + ' cm' });
+    drawn++;
+  });
+
+  if (!drawn) {
+    host.innerHTML = '<p class="chart-empty">Regista medidas no separador Corpo para as veres aqui.</p>';
+  }
 }
 
 function renderVolumeSection(allSets, dateBySession) {
@@ -2718,7 +2747,6 @@ function bindEvents() {
 
   // Evolução
   $('#ev-exercise').addEventListener('change', renderEvolution);
-  $('#ev-measure').addEventListener('change', renderEvolution);
   $('#ev-wod').addEventListener('change', renderEvolution);
 
   document.querySelectorAll('#lens-picker .seg').forEach((b) => {
