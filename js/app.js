@@ -51,7 +51,7 @@ async function init() {
   await DB.openDB();
   exercises = await DB.seedExercisesIfEmpty();
   indexExercises();
-  fillExercisePicker();
+  refreshExercisePickers();
   weeklyTarget = Number(await DB.getSetting('weeklyTarget', 5));
   bindEvents();
   await renderSessionList();
@@ -581,6 +581,14 @@ function fillWodExercisePicker() {
     });
     pick.appendChild(group);
   });
+}
+
+/* Os dois selectores mostram o mesmo catálogo e têm de ser recarregados
+ * sempre em conjunto. Estavam como duas chamadas separadas e bastou uma
+ * ficar para trás para o selector do WOD aparecer vazio. */
+function refreshExercisePickers() {
+  fillExercisePicker();
+  fillWodExercisePicker();
 }
 
 /* Texto compacto dos movimentos, para cartões, tabelas e CSV. */
@@ -2426,8 +2434,7 @@ async function doDriveRestore() {
 
     exercises = await DB.getExercises();
     indexExercises();
-    fillExercisePicker();
-    fillWodExercisePicker();
+    refreshExercisePickers();
     await loadDiet();
     await renderSessionList();
     await renderBodyList();
@@ -2491,8 +2498,7 @@ function renderCatalog() {
       await DB.deleteExercise(e.id);
       exercises = await DB.getExercises();
       indexExercises();
-      fillExercisePicker();
-      fillWodExercisePicker();
+      refreshExercisePickers();
       renderCatalog();
       toast('Movimento apagado');
     });
@@ -2549,8 +2555,7 @@ async function importJSON(file) {
 
     exercises = await DB.getExercises();
     indexExercises();
-    fillExercisePicker();
-    fillWodExercisePicker();
+    refreshExercisePickers();
     await loadDiet();
     await renderSessionList();
     await renderBodyList();
@@ -2663,8 +2668,7 @@ async function wipeEverything() {
   await DB.clearAllData();
   exercises = await DB.seedExercisesIfEmpty();
   indexExercises();
-  fillExercisePicker();
-  fillWodExercisePicker();
+  refreshExercisePickers();
   await loadDiet();
   await renderSessionList();
   await renderBodyList();
@@ -2721,8 +2725,7 @@ function bindEvents() {
     const record = await DB.addExercise(name, $('#f-new-exercise-cat').value);
     exercises = await DB.getExercises();
     indexExercises();
-    fillExercisePicker();
-    fillWodExercisePicker();
+    refreshExercisePickers();
     $('#f-new-exercise-name').value = '';
     $('#new-exercise').hidden = true;
     addGroup(record.id);
@@ -2784,8 +2787,7 @@ function bindEvents() {
     await DB.addExercise(name, $('#f-cat-category').value);
     exercises = await DB.getExercises();
     indexExercises();
-    fillExercisePicker();
-    fillWodExercisePicker();
+    refreshExercisePickers();
     renderCatalog();
     $('#f-cat-name').value = '';
     toast('Movimento criado');
