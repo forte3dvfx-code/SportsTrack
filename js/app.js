@@ -2,7 +2,7 @@
  * Toda a persistência passa pelo objecto DB definido em db.js.
  * Os gráficos passam pelo objecto Chart definido em chart.js. */
 
-const APP_VERSION = 'v15';
+const APP_VERSION = 'v16';
 
 /* A unidade de cada movimento é o que permite somar e comparar entre WODs.
  * Sem ela, "400" tanto são metros de corrida como repetições. */
@@ -685,13 +685,15 @@ function movementsText(w) {
   const body = w.movements.map((m) => {
     const parts = [];
     const unit = exerciseUnit(m.exerciseId);
-    if (m.scheme) parts.push(m.scheme);
-    else if (m.qty != null) parts.push(m.qty + (unit === 'reps' ? '' : ' ' + UNITS[unit]));
-    else parts.push('máx');
+    // A quantidade manda; o esquema é uma nota ao lado. Antes o esquema
+    // substituía o número e escondia "20 m" por trás de "cada lado".
+    if (m.qty != null) parts.push(m.qty + (unit === 'reps' ? '' : ' ' + UNITS[unit]));
+    else parts.push(m.scheme ? '' : 'máx');
     parts.push(m.exerciseId ? exerciseName(m.exerciseId) : 'movimento');
     if (m.weightKg != null) parts.push('@ ' + m.weightKg + ' kg');
-    if (m.everyRound === false && w.roundsPlanned) parts.push('(fora das rondas)');
-    return parts.join(' ');
+    if (m.scheme) parts.push('(' + m.scheme + ')');
+    if (m.everyRound === false && w.roundsPlanned) parts.push('[fora das rondas]');
+    return parts.filter(Boolean).join(' ');
   }).join(' + ');
 
   return (w.roundsPlanned != null && w.roundsPlanned > 0)
