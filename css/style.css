@@ -1164,3 +1164,103 @@ button:disabled {
   font-weight: 600;
   color: var(--ink);
 }
+
+/* Linha de adicionar movimento ao WOD */
+.wod-move.is-blank { grid-template-columns: 1fr; }
+.wod-move.is-blank select { background: var(--surface-2); color: var(--ink-dim); }
+.wod-move select.wod-move-name { font-size: 14px; }
+
+/* ============================================================
+   Movimentos com unidade e comparação entre WODs
+   ============================================================ */
+
+.wod-move {
+  display: block;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  margin-bottom: 8px;
+}
+
+.wod-move-top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+
+.wod-move-bottom {
+  display: grid;
+  grid-template-columns: 70px 34px 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.wod-move-qty,
+.wod-move-kg {
+  font-family: var(--mono);
+  text-align: center;
+  padding: 8px 6px;
+  background: var(--ground);
+}
+
+.wod-move-unit {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-align: left;
+}
+
+.round-toggle {
+  background: var(--ground);
+  border: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 8px 9px;
+  white-space: nowrap;
+}
+
+.round-toggle[aria-pressed="true"] {
+  color: var(--ground);
+  background: var(--load);
+  border-color: var(--load);
+  font-weight: 700;
+}
+
+.wod-move-scheme {
+  margin: 7px 0 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.wod-move.is-blank {
+  background: none;
+  border-style: dashed;
+  padding: 6px;
+}
+
+.wod-move.is-blank select {
+  background: var(--surface-2);
+  color: var(--ink-dim);
+  width: 100%;
+}
+
+.data-table td.move-wod {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-dim);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-exercise #f-cat-unit { flex: 0 0 70px; }
+
+@media (max-width: 380px) {
+  .wod-move-bottom { grid-template-columns: 58px 28px 1fr auto; }
+}

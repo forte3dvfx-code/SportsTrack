@@ -2,6 +2,24 @@
  * Toda a persistência passa pelo objecto DB definido em db.js.
  * Os gráficos passam pelo objecto Chart definido em chart.js. */
 
+const APP_VERSION = 'v15';
+
+/* A unidade de cada movimento é o que permite somar e comparar entre WODs.
+ * Sem ela, "400" tanto são metros de corrida como repetições. */
+const UNITS = { reps: 'reps', cal: 'cal', m: 'm', s: 's' };
+
+function exerciseUnit(id) {
+  const e = exercisesById[id];
+  return (e && e.unit) ? e.unit : 'reps';
+}
+
+/* Total de um movimento num WOD, já com as rondas aplicadas. */
+function movementTotal(w, m) {
+  if (m.qty == null) return null;
+  const rounds = (m.everyRound && w.roundsPlanned) ? w.roundsPlanned : 1;
+  return m.qty * rounds;
+}
+
 const MONTHS_PT = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 
 const MEASURE_LABELS = {
@@ -309,12 +327,17 @@ async function openEditor(sessionId) {
   wodMovements = (w && Array.isArray(w.movements))
     ? w.movements.map((m) => ({
         exerciseId: m.exerciseId,
-        reps: m.reps != null ? m.reps : '',
-        weightKg: m.weightKg != null ? m.weightKg : null
+        // Movimentos gravados antes das unidades tinham reps em texto.
+        qty: m.qty != null ? m.qty : (m.reps != null && m.reps !== '' && isFinite(Number(m.reps))
+              ? Number(m.reps) : null),
+        weightKg: m.weightKg != null ? m.weightKg : null,
+        everyRound: m.everyRound !== false,
+        scheme: m.scheme || (m.qty == null && m.reps && !isFinite(Number(m.reps)) ? m.reps : null)
       }))
     : [];
   if (w && !wodMovements.length && w.weightKg != null) {
-    wodMovements.push({ exerciseId: null, reps: '', weightKg: w.weightKg });
+    wodMovements.push({ exerciseId: null, qty: null, weightKg: w.weightKg,
+      everyRound: true, scheme: null });
   }
   renderWodMovements();
 
@@ -511,62 +534,18 @@ function renderGroups() {
   });
 }
 
-/* Movimentos do WOD, com o mesmo padrão dos grupos de força: o nome vem do
- * catálogo e fica como texto, não como selector — escolheste-o ao adicionar.
- * As repetições são texto de propósito: um WOD raramente tem um número só,
- * e "21-15-9" tem de caber sem ir parar à descrição. */
-function renderWodMovements() {
-  const host = $('#wod-movements');
-  host.innerHTML = '';
+/* Movimentos do WOD: o mesmo banco de exercícios da força, e cada linha
+ * mantém o seu próprio dropdown para se poder trocar o movimento depois
+ * de adicionado, em vez de ter de apagar a linha e voltar a escolher. */
+function buildExerciseSelect(selectedId, onChange, label) {
+  const sel = document.createElement('select');
+  sel.className = 'wod-move-name';
+  sel.setAttribute('aria-label', label);
 
-  wodMovements.forEach((m, i) => {
-    const row = document.createElement('div');
-    row.className = 'wod-move';
-
-    const name = document.createElement('span');
-    name.className = 'wod-move-name';
-    name.textContent = m.exerciseId ? exerciseName(m.exerciseId) : 'Movimento';
-
-    const reps = document.createElement('input');
-    reps.type = 'text';
-    reps.className = 'wod-move-reps';
-    reps.placeholder = 'reps';
-    reps.value = m.reps || '';
-    reps.setAttribute('aria-label', 'Repetições de ' + name.textContent);
-    reps.addEventListener('input', () => { m.reps = reps.value; });
-
-    const kg = document.createElement('input');
-    kg.type = 'number';
-    kg.className = 'wod-move-kg';
-    kg.inputMode = 'decimal';
-    kg.min = '0';
-    kg.step = '0.5';
-    kg.placeholder = 'kg';
-    kg.value = m.weightKg != null ? m.weightKg : '';
-    kg.setAttribute('aria-label', 'Carga de ' + name.textContent);
-    kg.addEventListener('input', () => { m.weightKg = numOrNull(kg.value); });
-
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'set-remove';
-    del.textContent = '×';
-    del.setAttribute('aria-label', 'Remover ' + name.textContent);
-    del.addEventListener('click', () => {
-      wodMovements.splice(i, 1);
-      renderWodMovements();
-    });
-
-    row.appendChild(name);
-    row.appendChild(reps);
-    row.appendChild(kg);
-    row.appendChild(del);
-    host.appendChild(row);
-  });
-}
-
-function fillWodExercisePicker() {
-  const pick = $('#f-wod-exercise-pick');
-  pick.innerHTML = '<option value="">Adicionar movimento…</option>';
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = '—';
+  sel.appendChild(blank);
 
   ['barbell', 'dumbbell', 'gymnastics', 'other'].forEach((cat) => {
     const inCat = exercises.filter((e) => e.category === cat);
@@ -579,16 +558,125 @@ function fillWodExercisePicker() {
       opt.textContent = e.name;
       group.appendChild(opt);
     });
-    pick.appendChild(group);
+    sel.appendChild(group);
   });
+
+  sel.value = selectedId || '';
+  sel.addEventListener('change', () => onChange(sel.value || null));
+  return sel;
 }
 
-/* Os dois selectores mostram o mesmo catálogo e têm de ser recarregados
- * sempre em conjunto. Estavam como duas chamadas separadas e bastou uma
- * ficar para trás para o selector do WOD aparecer vazio. */
+function renderWodMovements() {
+  const host = $('#wod-movements');
+  host.innerHTML = '';
+
+  wodMovements.forEach((m, i) => {
+    const block = document.createElement('div');
+    block.className = 'wod-move';
+
+    // Linha de cima: o movimento e o botão de remover.
+    const top = document.createElement('div');
+    top.className = 'wod-move-top';
+
+    const name = buildExerciseSelect(m.exerciseId, (id) => {
+      m.exerciseId = id;
+      renderWodMovements();   // a unidade muda com o movimento
+    }, 'Movimento ' + (i + 1));
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'set-remove';
+    del.textContent = '×';
+    del.setAttribute('aria-label', 'Remover movimento ' + (i + 1));
+    del.addEventListener('click', () => {
+      wodMovements.splice(i, 1);
+      renderWodMovements();
+    });
+
+    top.appendChild(name);
+    top.appendChild(del);
+    block.appendChild(top);
+
+    // Linha de baixo: quantidade na unidade do movimento, carga, e se
+    // repete em cada ronda.
+    const bottom = document.createElement('div');
+    bottom.className = 'wod-move-bottom';
+
+    const qty = document.createElement('input');
+    qty.type = 'number';
+    qty.className = 'wod-move-qty';
+    qty.inputMode = 'decimal';
+    qty.min = '0';
+    qty.step = 'any';
+    qty.placeholder = 'máx';
+    qty.value = m.qty != null ? m.qty : '';
+    qty.setAttribute('aria-label', 'Quantidade do movimento ' + (i + 1));
+    qty.addEventListener('input', () => { m.qty = numOrNull(qty.value); });
+
+    const unit = document.createElement('span');
+    unit.className = 'wod-move-unit';
+    unit.textContent = UNITS[exerciseUnit(m.exerciseId)] || 'reps';
+
+    const kg = document.createElement('input');
+    kg.type = 'number';
+    kg.className = 'wod-move-kg';
+    kg.inputMode = 'decimal';
+    kg.min = '0';
+    kg.step = '0.5';
+    kg.placeholder = 'kg';
+    kg.value = m.weightKg != null ? m.weightKg : '';
+    kg.setAttribute('aria-label', 'Carga do movimento ' + (i + 1));
+    kg.addEventListener('input', () => { m.weightKg = numOrNull(kg.value); });
+
+    // Um buy-in ou um acessório não se multiplica pelas rondas.
+    const every = document.createElement('button');
+    every.type = 'button';
+    every.className = 'round-toggle';
+    every.textContent = '/ronda';
+    every.title = 'Repete em cada ronda. Desliga para buy-in, acessório ou total já somado.';
+    every.setAttribute('aria-pressed', String(m.everyRound !== false));
+    every.addEventListener('click', () => {
+      m.everyRound = !(m.everyRound !== false);
+      every.setAttribute('aria-pressed', String(m.everyRound));
+    });
+
+    bottom.appendChild(qty);
+    bottom.appendChild(unit);
+    bottom.appendChild(kg);
+    bottom.appendChild(every);
+    block.appendChild(bottom);
+
+    // Esquema original, quando veio de uma descrição ("12-9-6").
+    if (m.scheme) {
+      const sch = document.createElement('p');
+      sch.className = 'wod-move-scheme';
+      sch.textContent = m.scheme;
+      block.appendChild(sch);
+    }
+
+    host.appendChild(block);
+  });
+
+  const blankRow = document.createElement('div');
+  blankRow.className = 'wod-move is-blank';
+  const blankSel = buildExerciseSelect(null, (id) => {
+    if (!id) return;
+    wodMovements.push({ exerciseId: id, qty: null, weightKg: null, everyRound: true, scheme: null });
+    renderWodMovements();
+  }, 'Adicionar movimento');
+  blankSel.querySelector('option').textContent = '+ Adicionar movimento…';
+  blankRow.appendChild(blankSel);
+  host.appendChild(blankRow);
+}
+
+/* Recarrega tudo o que mostra o catálogo de exercícios. Uma função só:
+ * quando eram duas chamadas separadas, bastou uma ficar para trás para o
+ * selector do WOD aparecer vazio. */
 function refreshExercisePickers() {
   fillExercisePicker();
-  fillWodExercisePicker();
+  // As linhas do WOD têm o catálogo embutido em cada dropdown, por isso
+  // um movimento criado agora só aparece depois de as redesenhar.
+  if ($('#wod-movements')) renderWodMovements();
 }
 
 /* Texto compacto dos movimentos, para cartões, tabelas e CSV. */
@@ -596,9 +684,13 @@ function movementsText(w) {
   if (!w || !Array.isArray(w.movements) || !w.movements.length) return '';
   const body = w.movements.map((m) => {
     const parts = [];
-    if (m.reps) parts.push(m.reps);
+    const unit = exerciseUnit(m.exerciseId);
+    if (m.scheme) parts.push(m.scheme);
+    else if (m.qty != null) parts.push(m.qty + (unit === 'reps' ? '' : ' ' + UNITS[unit]));
+    else parts.push('máx');
     parts.push(m.exerciseId ? exerciseName(m.exerciseId) : 'movimento');
     if (m.weightKg != null) parts.push('@ ' + m.weightKg + ' kg');
+    if (m.everyRound === false && w.roundsPlanned) parts.push('(fora das rondas)');
     return parts.join(' ');
   }).join(' + ');
 
@@ -710,7 +802,7 @@ async function saveEditor() {
   const wods = [];
   const wodName = $('#f-wod-name').value.trim();
   const wodDesc = $('#f-wod-desc').value.trim();
-  const hasMovements = wodMovements.some((m) => m.exerciseId || m.reps || m.weightKg != null);
+  const hasMovements = wodMovements.some((m) => m.exerciseId || m.qty != null || m.weightKg != null);
   if (wodName || wodDesc || hasMovements) {
     // (as rondas prescritas sozinhas não chegam para criar um WOD)
     const format = $('#f-wod-format').value;
@@ -731,11 +823,13 @@ async function saveEditor() {
       extraReps: isAmrap ? numOrNull($('#f-wod-extra').value) : null,
       roundsPlanned: numOrNull($('#f-wod-rounds-planned').value),
       movements: wodMovements
-        .filter((m) => m.exerciseId || m.reps || m.weightKg != null)
+        .filter((m) => m.exerciseId || m.qty != null || m.weightKg != null)
         .map((m) => ({
           exerciseId: m.exerciseId || null,
-          reps: (m.reps || '').trim() || null,
-          weightKg: m.weightKg != null ? m.weightKg : null
+          qty: m.qty != null ? m.qty : null,
+          weightKg: m.weightKg != null ? m.weightKg : null,
+          everyRound: m.everyRound !== false,
+          scheme: m.scheme || null
         })),
       scaling: wodScaling,
       description: wodDesc
@@ -1180,6 +1274,7 @@ async function renderEvolution() {
     });
     await loadHrProfile();
     renderWodSection(allWods, dateBySession, sessionById);
+    renderMoveSection(allWods, dateBySession);
     return;
   }
 
@@ -2034,6 +2129,90 @@ function outcomeKey(w) {
   return isRx ? (inTime ? 'rxIn' : 'rxOut') : (inTime ? 'scaledIn' : 'scaledOut');
 }
 
+/* Comparação do mesmo movimento entre WODs diferentes. É isto que as
+ * unidades vêm permitir: somar 400 m de corrida de um WOD com 800 m de
+ * outro, e manter separado das calorias e das repetições. */
+function renderMoveSection(allWods, dateBySession) {
+  const select = $('#ev-wod-move');
+  const tbody = $('#move-table').querySelector('tbody');
+
+  // Uma entrada por movimento e por WOD, com o total já multiplicado
+  // pelas rondas quando o movimento se repete em cada uma.
+  const byExercise = {};
+  allWods.forEach((w) => {
+    const date = dateBySession[w.sessionId];
+    if (!date || !Array.isArray(w.movements)) return;
+    w.movements.forEach((m) => {
+      if (!m.exerciseId) return;
+      const total = movementTotal(w, m);
+      if (!byExercise[m.exerciseId]) byExercise[m.exerciseId] = [];
+      byExercise[m.exerciseId].push({
+        date: date,
+        wodName: w.name || 'WOD',
+        total: total,
+        weightKg: m.weightKg,
+        scheme: m.scheme
+      });
+    });
+  });
+
+  const ids = Object.keys(byExercise)
+    .sort((a, b) => byExercise[b].length - byExercise[a].length ||
+                    exerciseName(a).localeCompare(exerciseName(b), 'en'));
+
+  const previous = select.value;
+  select.innerHTML = '';
+  ids.forEach((id) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = exerciseName(id) + '  (' + byExercise[id].length + ')';
+    select.appendChild(opt);
+  });
+  if (ids.indexOf(previous) >= 0) select.value = previous;
+
+  if (!ids.length) {
+    select.hidden = true;
+    $('#chart-move-volume').innerHTML =
+      '<p class="chart-empty">Acrescenta movimentos aos WODs para os comparares entre treinos.</p>';
+    tbody.innerHTML = '';
+    $('#move-hint').textContent = '';
+    return;
+  }
+  select.hidden = false;
+
+  const chosen = select.value || ids[0];
+  const unit = exerciseUnit(chosen);
+  const rows = byExercise[chosen].slice().sort((a, b) => a.date.localeCompare(b.date));
+
+  const points = rows.filter((r) => r.total != null)
+    .map((r) => ({ x: r.date, y: r.total }));
+
+  Chart.line($('#chart-move-volume'), points, {
+    format: (v) => Math.round(v).toLocaleString('pt-PT') + ' ' + UNITS[unit]
+  });
+
+  tbody.innerHTML = '';
+  rows.slice().reverse().forEach((r) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + prettyDate(r.date) + '</td>' +
+      '<td class="move-wod">' + escapeHtml(r.wodName) + '</td>' +
+      '<td>' + (r.total != null
+        ? Math.round(r.total).toLocaleString('pt-PT') + ' ' + UNITS[unit]
+        : '<span class="muted">máx</span>') + '</td>' +
+      '<td>' + (r.weightKg != null ? r.weightKg + ' kg' : '—') + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  const withQty = rows.filter((r) => r.total != null);
+  const sum = withQty.reduce((a, r) => a + r.total, 0);
+  $('#move-hint').textContent =
+    'Total acumulado: ' + Math.round(sum).toLocaleString('pt-PT') + ' ' + UNITS[unit] +
+    ' em ' + rows.length + (rows.length === 1 ? ' treino' : ' treinos') + '. ' +
+    'Os valores por ronda já vêm multiplicados pelas rondas prescritas; ' +
+    'buy-ins e acessórios contam uma vez só.';
+}
+
 function renderWodSection(allWods, dateBySession, sessionById) {
   const select = $('#ev-wod');
   const named = allWods.filter((w) => w.name);
@@ -2355,6 +2534,7 @@ async function renderSettings() {
     DB.getSessions(), DB.getAllSets(), DB.getAllWods(), DB.getBodyMetrics()
   ]);
 
+  $('#app-version').textContent = 'Versão ' + APP_VERSION;
   $('#stat-line').textContent =
     sessions.length + ' sessões · ' + sets.length + ' séries · ' +
     wods.length + ' WODs · ' + body.length + ' medições';
@@ -2483,7 +2663,7 @@ function renderCatalog() {
 
     const cat = document.createElement('span');
     cat.className = 'catalog-cat';
-    cat.textContent = e.category;
+    cat.textContent = e.category + ' · ' + (e.unit || 'reps');
 
     const del = document.createElement('button');
     del.type = 'button';
@@ -2691,14 +2871,6 @@ function bindEvents() {
   $('#btn-delete').addEventListener('click', removeSession);
   $('#f-wod-format').addEventListener('change', refreshWodFields);
 
-  $('#f-wod-exercise-pick').addEventListener('change', (ev) => {
-    const value = ev.target.value;
-    ev.target.value = '';
-    if (!value) return;
-    wodMovements.push({ exerciseId: value, reps: '', weightKg: null });
-    renderWodMovements();
-  });
-
   ['#f-wod-cap', '#f-wod-min', '#f-wod-sec'].forEach((sel) => {
     $(sel).addEventListener('input', refreshWodFields);
   });
@@ -2722,7 +2894,7 @@ function bindEvents() {
   $('#btn-create-exercise').addEventListener('click', async () => {
     const name = $('#f-new-exercise-name').value.trim();
     if (!name) return toast('Escreve o nome do movimento.');
-    const record = await DB.addExercise(name, $('#f-new-exercise-cat').value);
+    const record = await DB.addExercise(name, $('#f-new-exercise-cat').value, 'reps');
     exercises = await DB.getExercises();
     indexExercises();
     refreshExercisePickers();
@@ -2751,6 +2923,7 @@ function bindEvents() {
   // Evolução
   $('#ev-exercise').addEventListener('change', renderEvolution);
   $('#ev-wod').addEventListener('change', renderEvolution);
+  $('#ev-wod-move').addEventListener('change', renderEvolution);
 
   document.querySelectorAll('#lens-picker .seg').forEach((b) => {
     b.addEventListener('click', () => {
@@ -2784,7 +2957,7 @@ function bindEvents() {
   $('#btn-cat-add').addEventListener('click', async () => {
     const name = $('#f-cat-name').value.trim();
     if (!name) return toast('Escreve o nome do movimento.');
-    await DB.addExercise(name, $('#f-cat-category').value);
+    await DB.addExercise(name, $('#f-cat-category').value, $('#f-cat-unit').value);
     exercises = await DB.getExercises();
     indexExercises();
     refreshExercisePickers();

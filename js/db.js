@@ -21,44 +21,77 @@ function uid() {
 
 /* Catálogo inicial de movimentos. Nomes em inglês, como se usam no box. */
 const SEED_EXERCISES = [
-  ['Back Squat', 'barbell'],
-  ['Front Squat', 'barbell'],
-  ['Overhead Squat', 'barbell'],
-  ['Deadlift', 'barbell'],
-  ['Sumo Deadlift High Pull', 'barbell'],
-  ['Clean', 'barbell'],
-  ['Power Clean', 'barbell'],
-  ['Hang Power Clean', 'barbell'],
-  ['Clean and Jerk', 'barbell'],
-  ['Snatch', 'barbell'],
-  ['Power Snatch', 'barbell'],
-  ['Push Press', 'barbell'],
-  ['Push Jerk', 'barbell'],
-  ['Split Jerk', 'barbell'],
-  ['Strict Press', 'barbell'],
-  ['Bench Press', 'barbell'],
-  ['Thruster', 'barbell'],
-  ['Bent Over Row', 'barbell'],
-  ['Dumbbell Snatch', 'dumbbell'],
-  ['Dumbbell Thruster', 'dumbbell'],
-  ['Devil Press', 'dumbbell'],
-  ['Kettlebell Swing', 'dumbbell'],
-  ['Goblet Squat', 'dumbbell'],
-  ['Farmers Carry', 'dumbbell'],
-  ['Pull-up', 'gymnastics'],
-  ['Chest to Bar', 'gymnastics'],
-  ['Muscle-up', 'gymnastics'],
-  ['Ring Muscle-up', 'gymnastics'],
-  ['Toes to Bar', 'gymnastics'],
-  ['Handstand Push-up', 'gymnastics'],
-  ['Handstand Walk', 'gymnastics'],
-  ['Ring Dip', 'gymnastics'],
-  ['Push-up', 'gymnastics'],
-  ['Box Jump', 'other'],
-  ['Wall Ball', 'other'],
-  ['Rope Climb', 'other'],
-  ['GHD Sit-up', 'other'],
-  ['Back Extension', 'other']
+  // [nome, categoria, unidade]. A unidade é o que torna os movimentos
+  // comparáveis entre WODs: 400 num Run são metros, 25 num Row Cals são
+  // calorias, 10 num Wall Ball são repetições.
+  ['Back Squat', 'barbell', 'reps'],
+  ['Front Squat', 'barbell', 'reps'],
+  ['Overhead Squat', 'barbell', 'reps'],
+  ['Deadlift', 'barbell', 'reps'],
+  ['Sumo Deadlift High Pull', 'barbell', 'reps'],
+  ['Clean', 'barbell', 'reps'],
+  ['Power Clean', 'barbell', 'reps'],
+  ['Hang Power Clean', 'barbell', 'reps'],
+  ['Clean and Jerk', 'barbell', 'reps'],
+  ['Snatch', 'barbell', 'reps'],
+  ['Power Snatch', 'barbell', 'reps'],
+  ['Push Press', 'barbell', 'reps'],
+  ['Push Jerk', 'barbell', 'reps'],
+  ['Split Jerk', 'barbell', 'reps'],
+  ['Strict Press', 'barbell', 'reps'],
+  ['Bench Press', 'barbell', 'reps'],
+  ['Thruster', 'barbell', 'reps'],
+  ['Bent Over Row', 'barbell', 'reps'],
+  ['Dumbbell Snatch', 'dumbbell', 'reps'],
+  ['Dumbbell Thruster', 'dumbbell', 'reps'],
+  ['Dumbbell Bench Press', 'dumbbell', 'reps'],
+  ['Dumbbell Hang Clean and Jerk', 'dumbbell', 'reps'],
+  ['Dumbbell Reverse Lunge', 'dumbbell', 'reps'],
+  ['Devil Press', 'dumbbell', 'reps'],
+  ['Kettlebell Swing', 'dumbbell', 'reps'],
+  ['Goblet Squat', 'dumbbell', 'reps'],
+  ['Farmers Carry', 'dumbbell', 'm'],
+  ['Pull-up', 'gymnastics', 'reps'],
+  ['Chest to Bar', 'gymnastics', 'reps'],
+  ['Muscle-up', 'gymnastics', 'reps'],
+  ['Bar Muscle-up', 'gymnastics', 'reps'],
+  ['Ring Muscle-up', 'gymnastics', 'reps'],
+  ['Toes to Bar', 'gymnastics', 'reps'],
+  ['Handstand Push-up', 'gymnastics', 'reps'],
+  ['Handstand Walk', 'gymnastics', 'm'],
+  ['Ring Dip', 'gymnastics', 'reps'],
+  ['Push-up', 'gymnastics', 'reps'],
+  ['Hollow Rock', 'gymnastics', 'reps'],
+  ['Chinese Plank', 'gymnastics', 's'],
+  ['Box Jump', 'other', 'reps'],
+  ['Box Jump Over', 'other', 'reps'],
+  ['Wall Ball', 'other', 'reps'],
+  ['Rope Climb', 'other', 'reps'],
+  ['GHD Sit-up', 'other', 'reps'],
+  ['Sit-up', 'other', 'reps'],
+  ['Back Extension', 'other', 'reps'],
+  ['Pallof Press', 'other', 'reps'],
+  ['Burpee', 'other', 'reps'],
+  ['Burpee Over Bar', 'other', 'reps'],
+  ['Burpee to Plate', 'other', 'reps'],
+  ['Burpee Over Dumbbell', 'other', 'reps'],
+  ['Burpee Box Jump Over', 'other', 'reps'],
+  ['Burpee Broad Jump', 'other', 'reps'],
+  ['Walking Lunge', 'other', 'reps'],
+  ['DoubleUnder', 'other', 'reps'],
+  ['Slam Ball Clean', 'other', 'reps'],
+  ['Slam Ball Over Shoulder', 'other', 'reps'],
+  ['Slam Ball Carry', 'other', 'm'],
+  ['Sled Push', 'other', 'm'],
+  ['Sprint Uphill', 'other', 'reps'],
+  ['Run', 'other', 'm'],
+  ['Row Cals', 'other', 'cal'],
+  ['Row Meters', 'other', 'm'],
+  ['Ski Cals', 'other', 'cal'],
+  ['Ski Meters', 'other', 'm'],
+  ['Echo Bike Cals', 'other', 'cal'],
+  ['Echo Bike Meters', 'other', 'm'],
+  ['Erg Cals', 'other', 'cal']
 ];
 
 /* Abre (e migra) a base de dados. Chamada uma única vez no arranque. */
@@ -147,8 +180,8 @@ async function seedExercisesIfEmpty() {
 
   await tx('exercises', 'readwrite', (t) => {
     const store = t.objectStore('exercises');
-    SEED_EXERCISES.forEach(([name, category]) => {
-      store.put({ id: uid(), name, category });
+    SEED_EXERCISES.forEach(([name, category, unit]) => {
+      store.put({ id: uid(), name: name, category: category, unit: unit });
     });
   });
   return getExercises();
@@ -160,8 +193,13 @@ function getExercises() {
   );
 }
 
-async function addExercise(name, category) {
-  const record = { id: uid(), name: name.trim(), category: category || 'other' };
+async function addExercise(name, category, unit) {
+  const record = {
+    id: uid(),
+    name: name.trim(),
+    category: category || 'other',
+    unit: unit || 'reps'
+  };
   await tx('exercises', 'readwrite', (t) => t.objectStore('exercises').put(record));
   return record;
 }
@@ -294,7 +332,7 @@ async function exportAll() {
   ]);
   return {
     app: 'treino',
-    schema: 2,
+    schema: 4,
     exportedAt: new Date().toISOString(),
     data: {
       sessions: sessions,
@@ -322,14 +360,23 @@ async function importAll(payload) {
 
   const idMap = {};   // id importado -> id a usar localmente
   const toInsert = [];
+  const unitUpdates = [];
 
   (d.exercises || []).forEach((e) => {
     if (!e || !e.name) return;
     const key = String(e.name).toLowerCase();
     if (byName[key]) {
       idMap[e.id] = byName[key];
+      // Um backup mais recente pode trazer a unidade de um movimento que
+      // já existe cá sem ela.
+      if (e.unit) unitUpdates.push({ id: byName[key], unit: e.unit });
     } else {
-      const record = { id: e.id || uid(), name: e.name, category: e.category || 'other' };
+      const record = {
+        id: e.id || uid(),
+        name: e.name,
+        category: e.category || 'other',
+        unit: e.unit || 'reps'
+      };
       byName[key] = record.id;
       idMap[e.id] = record.id;
       toInsert.push(record);
@@ -339,6 +386,12 @@ async function importAll(payload) {
 
   await tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet'], 'readwrite', (t) => {
     toInsert.forEach((e) => t.objectStore('exercises').put(e));
+    unitUpdates.forEach((u) => {
+      const found = local.find((x) => x.id === u.id);
+      if (found && !found.unit) {
+        t.objectStore('exercises').put(Object.assign({}, found, { unit: u.unit }));
+      }
+    });
 
     (d.sessions || []).forEach((s) => {
       if (!s || !s.id || !s.date) return;
@@ -356,7 +409,18 @@ async function importAll(payload) {
 
     (d.wods || []).forEach((w) => {
       if (!w || !w.id) return;
-      t.objectStore('wods').put(w);
+      // Os movimentos trazem exerciseId embutido e também têm de ser
+      // reapontados, tal como as séries de força. Sem isto, importar um
+      // backup num catálogo que já tem os mesmos nomes deixa todos os
+      // movimentos dos WODs a apontar para ids inexistentes.
+      const copy = Object.assign({}, w);
+      if (Array.isArray(copy.movements)) {
+        copy.movements = copy.movements.map((m) => {
+          if (!m || !m.exerciseId || !idMap[m.exerciseId]) return m;
+          return Object.assign({}, m, { exerciseId: idMap[m.exerciseId] });
+        });
+      }
+      t.objectStore('wods').put(copy);
       result.wods++;
     });
 

@@ -198,9 +198,23 @@
         </p>
         <p class="hint">Toca numa linha para ver o treino em detalhe.</p>
       </section>
+      <section class="panel">
+        <h2>Movimento entre WODs</h2>
+        <select id="ev-wod-move" aria-label="Movimento a comparar"></select>
+        <div id="chart-move-volume" class="chart-host"></div>
+        <div class="table-wrap">
+          <table class="data-table" id="move-table">
+            <thead>
+              <tr><th>Data</th><th>WOD</th><th>Volume</th><th>Carga</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="move-hint"></p>
+      </section>
     </div>
 
-    <!-- ---------- LENTE: CORPO ---------- -->
+
     <div data-lens-panel="corpo" hidden>
       <section class="panel">
         <h2>Peso corporal</h2>
@@ -240,6 +254,7 @@
 
     <section class="panel">
       <h2>Cópia de segurança</h2>
+      <p class="stat" id="app-version"></p>
       <p class="stat" id="stat-line"></p>
       <p class="stat" id="last-backup-line"></p>
       <div class="btn-stack">
@@ -340,6 +355,12 @@
           <option value="dumbbell">dumbbell</option>
           <option value="gymnastics">gymnastics</option>
           <option value="other">other</option>
+        </select>
+        <select id="f-cat-unit" aria-label="Unidade">
+          <option value="reps">reps</option>
+          <option value="cal">cal</option>
+          <option value="m">m</option>
+          <option value="s">s</option>
         </select>
         <button class="btn-secondary" id="btn-cat-add">Criar</button>
       </div>
@@ -484,10 +505,8 @@
           <div class="field">
             <span class="label">Movimentos</span>
             <div id="wod-movements"></div>
-            <select id="f-wod-exercise-pick">
-              <option value="">Adicionar movimento…</option>
-            </select>
-            <p class="hint">Reps aceita um número ou um esquema como 21-15-9.</p>
+            <p class="hint">Mesmo banco de exercícios da força. Reps aceita um número
+            ou um esquema como 21-15-9.</p>
           </div>
 
           <label class="field">
