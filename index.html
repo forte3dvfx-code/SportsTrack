@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070B16">
+<title>Registo de Treino</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<main id="app">
+
+  <!-- ============ SEPARADOR: TREINO ============ -->
+  <section class="view" id="view-treino" data-view="treino">
+    <header class="topbar">
+      <h1>Treino</h1>
+      <button class="btn-primary" id="btn-new-session">Nova sessão</button>
+    </header>
+
+    <div class="banner" id="backup-banner" hidden>
+      <span id="backup-banner-text"></span>
+      <button class="btn-secondary" id="btn-banner-backup">Exportar</button>
+    </div>
+
+    <div id="week-strip" class="week-strip"></div>
+    <div class="panel week-progress">
+      <div class="wp-top"><span>Treino 1 · CrossFit</span><b id="wp-count"></b></div>
+      <div class="progress"><i id="wp-bar" style="width:0"></i></div>
+      <div class="wp-top wp-second"><span>Treino 2</span><b id="wp-count2"></b></div>
+      <div class="progress progress-2"><i id="wp-bar2" style="width:0"></i></div>
+    </div>
+
+    <h2 class="section-title">Sessões <small id="sessions-count"></small></h2>
+    <div id="session-list" class="list"></div>
+
+    <p class="empty" id="empty-sessions" hidden>
+      Ainda não há sessões.<br>Regista a primeira em <strong>Nova sessão</strong>.
+    </p>
+  </section>
+
+  <!-- ============ SEPARADOR: CORPO ============ -->
+  <section class="view" id="view-corpo" data-view="corpo" hidden>
+    <header class="topbar">
+      <h1>Corpo</h1>
+      <button class="btn-primary" id="btn-new-body">Nova medição</button>
+    </header>
+    <section class="panel">
+      <h2>Plano alimentar</h2>
+      <div class="segmented small" id="diet-mode">
+        <button type="button" class="seg is-active" data-mode="loss">Perda de peso</button>
+        <button type="button" class="seg" data-mode="maint">Manutenção</button>
+      </div>
+      <p class="diet-plan-note" id="diet-plan-note"></p>
+      <div class="month-nav">
+        <button class="btn-ghost" id="diet-prev" aria-label="Mês anterior">‹</button>
+        <span id="diet-month"></span>
+        <button class="btn-ghost" id="diet-next" aria-label="Mês seguinte">›</button>
+      </div>
+      <div id="diet-grid" class="diet-grid"></div>
+      <div class="legend">
+        <span class="legend-item"><i class="diet-swatch yes"></i>Cumpri</span>
+        <span class="legend-item"><i class="diet-swatch no"></i>Não cumpri</span>
+        <span class="legend-item"><i class="diet-swatch train"></i>Dia de treino</span>
+      </div>
+      <div class="tiles" id="diet-tiles"></div>
+      <p class="hint">Toca num dia para o marcar como cumprido; toca outra vez para
+      desmarcar. Um dia sem marca conta como falhado (a partir do primeiro dia que
+      registaste; hoje só conta quando o marcares). Dias com treino registado usam
+      as calorias de dia de treino; os outros, as de descanso.</p>
+    </section>
+
+    <div id="body-list" class="list"></div>
+    <p class="empty" id="empty-body" hidden>
+      Ainda não há medições.<br>A app abre já na sexta-feira mais recente.
+    </p>
+  </section>
+
+  <!-- ============ SEPARADOR: EVOLUÇÃO ============ -->
+  <section class="view" id="view-evolucao" data-view="evolucao" hidden>
+    <header class="topbar hero-top">
+      <div>
+        <p class="greet"><span id="greet">Olá</span> · <span id="greet-date"></span></p>
+        <h1><span class="brand-mark" aria-hidden="true"></span>Evolução</h1>
+      </div>
+      <button class="icon-btn" id="btn-goto-body" aria-label="Registar peso">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 10a3 3 0 0 1 6 0M12 10l1.5-1.5"/></svg>
+      </button>
+    </header>
+
+    <!-- Lentes sobre os mesmos dados, para não haver um scroll infinito -->
+    <div class="segmented" id="lens-picker" role="tablist">
+      <button class="seg is-active" data-lens="resumo" role="tab">Resumo</button>
+      <button class="seg" data-lens="sessoes" role="tab">Sessões</button>
+      <button class="seg" data-lens="forca" role="tab">Força</button>
+      <button class="seg" data-lens="wod" role="tab">WOD</button>
+      <button class="seg" data-lens="corpo" role="tab">Corpo</button>
+    </div>
+
+    <!-- ---------- LENTE: RESUMO ---------- -->
+    <div data-lens-panel="resumo">
+      <section class="hero-card">
+        <div id="week-ring" class="hero-ring"></div>
+        <div id="week-stats" class="hero-stats"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Previsão de peso</h2>
+          <button class="link-btn" data-goto-lens="corpo">Simular ›</button>
+        </div>
+        <div id="forecast-mini"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Destaques</h2>
+        <div id="insights" class="insights"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Força estimada</h2>
+          <button class="link-btn" data-goto-lens="forca">Ver tudo ›</button>
+        </div>
+        <div id="lift-sparks" class="spark-list"></div>
+        <p class="hint">1RM estimado por sessão (fórmula de Epley). A percentagem
+        compara o melhor das 3 sessões mais recentes com as 3 anteriores. Toca
+        num movimento para o detalhe.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Tempo de treino</h2>
+        <div id="chart-load" class="chart-host"></div>
+        <p class="hint">Minutos por semana nas últimas 12 semanas. A linha branca é a
+        média das últimas 4 semanas: mostra a tendência sem o ruído de uma semana má.</p>
+      </section>
+    </div>
+
+    <!-- ---------- LENTE: SESSÕES ---------- -->
+    <div data-lens-panel="sessoes" hidden>
+
+      <label class="field period-field">
+        <span class="label">Período</span>
+        <select id="period-select">
+          <option value="0" selected>Todos os treinos</option>
+          <option value="5">Últimos 5 dias</option>
+          <option value="10">Últimos 10 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="30">Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+          <option value="180">Últimos 6 meses</option>
+          <option value="365">Último ano</option>
+        </select>
+      </label>
+
+      <div class="tiles" id="session-tiles"></div>
+
+      <section class="panel">
+        <h2>Carga de treino</h2>
+        <div class="tiles" id="trimp-tiles"></div>
+        <div id="chart-trimp" class="chart-host"></div>
+        <p class="hint" id="trimp-hint"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Consistência</h2>
+        <div class="tiles" id="consistency-tiles"></div>
+        <div id="heatmap-host" class="heatmap-host"></div>
+        <p class="hint">Um quadrado por dia, último ano. Passa o dedo para ver a data.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Descanso</h2>
+        <div id="rest-rows" class="pr-list"></div>
+        <p class="hint">
+          Princípios gerais, não uma prescrição: cerca de 48 h entre sessões pesadas
+          do mesmo padrão de movimento, e pelo menos um dia completo de descanso por
+          semana. O que é adequado para ti depende de sono, idade, alimentação e
+          stress, que a app não conhece.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Treinos por semana</h2>
+        <div id="chart-perweek" class="chart-host"></div>
+        <p class="hint">Conta os dois treinos do dia. A linha tracejada é o alvo semanal somado (Treino 1 + Treino 2).</p>
+      </section>
+
+      <section class="panel">
+        <h2>Por dia da semana</h2>
+        <div id="chart-weekday" class="chart-host"></div>
+        <p class="hint">Contagem de sessões em cada dia, dentro do período escolhido.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Duração por sessão</h2>
+        <div id="chart-duration" class="chart-host"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Mês a mês</h2>
+        <div class="table-wrap">
+          <table class="data-table" id="month-table">
+            <thead>
+              <tr><th>Mês</th><th>N.º</th><th>Duração</th><th>kcal</th><th>bpm</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint">Médias por sessão. Só contam sessões com o campo preenchido.</p>
+      </section>
+    </div>
+
+    <!-- ---------- LENTE: FORÇA ---------- -->
+    <div data-lens-panel="forca" hidden>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Os meus RM</h2>
+          <small class="muted" id="rm-count"></small>
+        </div>
+        <div id="rm-list" class="rm-list"></div>
+        <div class="rm-form">
+          <select id="rm-ex" aria-label="Movimento do RM"></select>
+          <div class="rm-form-row">
+            <input type="number" id="rm-kg" inputmode="decimal" min="0" step="0.5" placeholder="kg" aria-label="Carga do RM">
+            <input type="date" id="rm-date" aria-label="Data do RM (opcional)">
+            <button type="button" class="btn-primary" id="rm-save">Guardar</button>
+          </div>
+        </div>
+        <p class="hint">O máximo de uma repetição de cada movimento. Sem data fica
+        "de sempre". Onde há RM, é ele o 1RM usado em toda a app, e cada série passa a
+        mostrar a sua % do RM, que define a intensidade (leve &lt; 65%, moderado 65–82%,
+        pesado 83–94%, teste ≥ 95%). À direita, o 1RM estimado pelos treinos dos últimos
+        90 dias: se passar o RM, está na hora de testar. Um single marcado RM no registo
+        acima do valor daqui actualiza-o sozinho.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Força para o teu corpo</h2>
+        <div class="tiles" id="comp-tiles"></div>
+
+        <div class="whatif" id="potential-controls">
+          <p class="whatif-title">Simular outro corpo</p>
+          <label class="slider">
+            <span class="slider-top"><span>Peso</span><b id="sim-w-out"></b></span>
+            <input type="range" id="sim-w" min="55" max="120" step="0.5">
+          </label>
+          <label class="slider">
+            <span class="slider-top"><span>Gordura</span><b id="sim-f-out"></b></span>
+            <input type="range" id="sim-f" min="5" max="40" step="0.5">
+          </label>
+          <p class="sim-lean" id="sim-lean-out"></p>
+          <div class="chip-row">
+            <button type="button" class="btn-secondary" data-sim="cut">Peso objectivo, mesmo músculo</button>
+            <button type="button" class="btn-secondary" data-sim="muscle">+3 kg de músculo</button>
+            <button type="button" class="btn-secondary" data-sim="reset">Repor real</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table" id="potential-table">
+            <thead>
+              <tr><th>Movimento</th><th>Tu</th><th>Nível</th><th>Interm.</th><th>Avanç.</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="potential-hint"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Todos os movimentos</h2>
+        <div class="table-wrap">
+          <table class="data-table" id="lifts-table">
+            <thead>
+              <tr><th>Movimento</th><th>Melhor</th><th>Última</th><th>Há</th><th>Tend.</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint">Melhor 1RM, carga da série mais pesada da última vez, dias desde
+        então, e tendência das três últimas sessões contra as três anteriores.
+        <b>RM</b> = máximo medido (um single marcado com o botão RM no registo).
+        <b>≈</b> = estimado pela conjugação das séries: séries retas (ex.: 5×5 à mesma
+        carga) contam com 3 repetições na reserva, o topo repetido com 2, o topo único de
+        uma subida ou onda com 1. Para teres o valor real, marca RM nos dias de teste.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Por padrão de movimento</h2>
+        <div id="pattern-rows" class="pat-list"></div>
+        <p class="hint">Agrupa os exercícios pelo gesto (olímpicos, peso morto,
+        agachamento, puxar, empurrar, core) para comparares exercícios diferentes
+        que treinam o mesmo. Relativa = melhor 1RM estimado a dividir pelo teu peso
+        mais recente. Volume = carga × repetições nas últimas 4 semanas, contra as 4 anteriores.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Progressão de carga</h2>
+        <select id="ev-exercise" aria-label="Movimento a analisar"></select>
+        <div id="chart-strength" class="chart-host"></div>
+        <div class="legend" id="intent-legend"></div>
+        <p class="hint" id="strength-hint"></p>
+        <div id="band-rows" class="pr-list"></div>
+        <div id="strength-prs" class="pr-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Volume semanal</h2>
+        <div id="chart-volume" class="chart-host"></div>
+        <p class="hint">Soma de repetições × carga das séries de trabalho, últimas 12 semanas.</p>
+      </section>
+
+    </div>
+
+    <!-- ---------- LENTE: WOD ---------- -->
+    <div data-lens-panel="wod" hidden>
+      <section class="panel">
+        <h2>WOD</h2>
+        <div class="segmented small" id="wod-group">
+          <button type="button" class="seg is-active" data-group="moves">Agrupar por movimentos</button>
+          <button type="button" class="seg" data-group="name">Por nome</button>
+        </div>
+        <select id="ev-wod" aria-label="WOD a analisar"></select>
+        <div id="wod-strip" class="strip-host"></div>
+        <div id="wod-matrix"></div>
+        <div id="chart-wod" class="chart-host"></div>
+        <p class="hint" id="wod-hint"></p>
+        <div class="table-wrap">
+          <table class="data-table" id="wod-table">
+            <thead>
+              <tr><th>Data</th><th>Resultado</th><th>Escala</th><th>%FCmáx</th><th>kcal/min</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="wod-intensity-hint">
+        </p>
+        <p class="hint">Toca numa linha para ver o treino em detalhe. Por movimentos,
+        juntam-se WODs do mesmo formato que partilham pelo menos 60% dos
+        movimentos — nomes genéricos como "Hyrox" deixam de misturar treinos diferentes.</p>
+        <div id="wod-similar"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Intensidade de cada WOD</h2>
+        <div class="segmented small" id="wod-int-sort">
+          <button type="button" class="seg is-active" data-sort="recent">Mais recentes</button>
+          <button type="button" class="seg" data-sort="hard">Mais intensos</button>
+        </div>
+        <div class="tiles" id="wod-domain-tiles"></div>
+        <div id="wod-intensity-list" class="int-list"></div>
+        <p class="hint">Intensidade = carga cardíaca por minuto (pontos/min), que compara
+        WODs diferentes entre si. A FC e as calorias são as da sessão inteira, por isso
+        incluem a parte de força quando a houve. Compara de preferência dentro do mesmo
+        domínio de tempo: curtos, médios e longos esforçam o corpo de maneira diferente.</p>
+      </section>
+      <section class="panel">
+        <h2>Movimento entre WODs</h2>
+        <select id="ev-wod-move" aria-label="Movimento a comparar"></select>
+        <div id="chart-move-volume" class="chart-host"></div>
+        <div class="table-wrap">
+          <table class="data-table" id="move-table">
+            <thead>
+              <tr><th>Data</th><th>WOD</th><th>Volume</th><th>Carga</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="move-hint"></p>
+      </section>
+    </div>
+
+
+    <div data-lens-panel="corpo" hidden>
+      <section class="panel">
+        <h2>Previsão de peso</h2>
+        <div class="tiles" id="forecast-tiles"></div>
+        <div id="chart-forecast" class="chart-host"></div>
+        <div class="legend" id="forecast-legend"></div>
+
+        <div class="whatif" id="forecast-controls">
+          <p class="whatif-title">E se…</p>
+          <label class="slider">
+            <span class="slider-top"><span>Cumprir o plano</span><b id="fx-p-out"></b></span>
+            <input type="range" id="fx-p" min="0" max="100" step="5">
+          </label>
+          <label class="slider">
+            <span class="slider-top"><span>Treinos (T1 + T2)</span><b id="fx-spw-out"></b></span>
+            <input type="range" id="fx-spw" min="0" max="14" step="0.5">
+          </label>
+          <div class="slider">
+            <span class="slider-top"><span>Intensidade dos treinos</span></span>
+            <div class="segmented small" id="fx-int">
+              <button type="button" class="seg" data-int="0.8">Mais leve</button>
+              <button type="button" class="seg is-active" data-int="1">Como agora</button>
+              <button type="button" class="seg" data-int="1.2">Mais intensa</button>
+            </div>
+          </div>
+          <div class="segmented small" id="fx-weeks">
+            <button type="button" class="seg" data-weeks="4">4 sem</button>
+            <button type="button" class="seg" data-weeks="8">8 sem</button>
+            <button type="button" class="seg is-active" data-weeks="12">12 sem</button>
+            <button type="button" class="seg" data-weeks="26">6 meses</button>
+          </div>
+          <button type="button" class="btn-secondary" id="fx-reset">Repor os meus valores reais</button>
+        </div>
+        <p class="hint" id="forecast-hint"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Peso corporal</h2>
+        <div id="chart-weight" class="chart-host"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Plano alimentar e peso</h2>
+        <div class="table-wrap">
+          <table class="data-table" id="diet-table">
+            <thead>
+              <tr><th>Semana</th><th>Cumpri</th><th>Peso</th><th>Variação</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="diet-groups"></div>
+        <p class="hint" id="diet-hint"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Metabolismo</h2>
+        <div class="tiles" id="bmr-tiles"></div>
+        <p class="hint" id="bmr-hint"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Medidas</h2>
+        <div id="measures-host"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============ SEPARADOR: DEFINIÇÕES ============ -->
+  <section class="view" id="view-definicoes" data-view="definicoes" hidden>
+    <header class="topbar"><h1>Definições</h1></header>
+
+    <section class="panel">
+      <h2>Cópia de segurança</h2>
+      <p class="stat" id="app-version"></p>
+      <p class="stat" id="stat-line"></p>
+      <p class="stat" id="last-backup-line"></p>
+      <div class="btn-stack">
+        <button class="btn-primary" id="btn-export-json">Exportar tudo (JSON)</button>
+        <button class="btn-secondary" id="btn-import-json">Importar JSON</button>
+        <input type="file" id="file-import" accept="application/json,.json,.txt" hidden>
+      </div>
+      <label class="field">
+        <span class="label">Avisar-me a cada</span>
+        <select id="f-backup-interval">
+          <option value="0">Nunca</option>
+          <option value="7">7 dias</option>
+          <option value="14">14 dias</option>
+          <option value="30">30 dias</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="panel">
+      <h2>Google Drive</h2>
+      <p class="stat" id="drive-status">A verificar…</p>
+      <div class="btn-stack">
+        <button class="btn-primary" id="btn-drive-backup">Enviar cópia agora</button>
+        <button class="btn-secondary" id="btn-drive-restore">Restaurar do Drive</button>
+      </div>
+      <label class="checkline">
+        <input type="checkbox" id="f-drive-auto">
+        <span>Enviar automaticamente ao abrir, quando passar o prazo acima</span>
+      </label>
+      <p class="hint">
+        A cópia vai para a pasta <strong>Treino</strong> no teu Drive, num
+        ficheiro que se substitui de cada vez. Restaurar funde com o que já
+        tens — nunca apaga nada.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>Exportar para folha de cálculo</h2>
+      <p class="hint">CSV separado por ponto e vírgula, com BOM — abre direito no Excel português.</p>
+      <div class="btn-stack">
+        <button class="btn-secondary" id="btn-csv-sessions">Sessões</button>
+        <button class="btn-secondary" id="btn-csv-sets">Séries de força</button>
+        <button class="btn-secondary" id="btn-csv-wods">WODs</button>
+        <button class="btn-secondary" id="btn-csv-body">Peso e medidas</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Perfil e objectivos</h2>
+      <p class="hint">Só para calcular o metabolismo. Fica no telemóvel, como tudo o resto.</p>
+      <div class="row-3">
+        <label class="field">
+          <span class="label">Altura <em>cm</em></span>
+          <input type="number" id="p-height" inputmode="numeric" min="0" step="1" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">Ano nasc.</span>
+          <input type="number" id="p-birthyear" inputmode="numeric" min="1900" step="1" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">Sexo</span>
+          <select id="p-sex">
+            <option value="">—</option>
+            <option value="m">Masculino</option>
+            <option value="f">Feminino</option>
+          </select>
+        </label>
+      </div>
+      <div class="row-2">
+        <label class="field">
+          <span class="label">FC máxima <em>bpm</em></span>
+          <input type="number" id="p-maxhr" inputmode="numeric" min="0" step="1" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">FC repouso <em>bpm</em></span>
+          <input type="number" id="p-resthr" inputmode="numeric" min="0" step="1" placeholder="—">
+        </label>
+      </div>
+      <p class="hint" id="hr-hint"></p>
+
+      <p class="sub-title">Plano alimentar <em class="muted">kcal por dia</em></p>
+      <div class="row-2">
+        <label class="field">
+          <span class="label">Perda · dia de treino</span>
+          <input type="number" id="p-diet-train" inputmode="numeric" min="0" step="10" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">Perda · sem treino</span>
+          <input type="number" id="p-diet-rest" inputmode="numeric" min="0" step="10" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">Manutenção · treino</span>
+          <input type="number" id="p-maint-train" inputmode="numeric" min="0" step="10" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">Manutenção · sem treino</span>
+          <input type="number" id="p-maint-rest" inputmode="numeric" min="0" step="10" placeholder="—">
+        </label>
+      </div>
+      <label class="checkline">
+        <input type="checkbox" id="p-calibrate">
+        <span>Acertar o gasto estimado pelo plano de manutenção (o nutricionista
+        conhece-te melhor do que uma fórmula)</span>
+      </label>
+      <p class="hint" id="diet-calc-hint"></p>
+      <label class="field">
+        <span class="label">Peso objectivo <em>kg</em></span>
+        <input type="number" id="p-goal-weight" inputmode="decimal" min="0" step="0.1" placeholder="—">
+      </label>
+      <label class="field">
+        <span class="label">Nos dias fora do plano como…</span>
+        <select id="p-offplan">
+          <option value="0">O mesmo que gasto (manutenção)</option>
+          <option value="250">Mais 250 kcal</option>
+          <option value="500">Mais 500 kcal</option>
+          <option value="1000">Mais 1000 kcal</option>
+        </select>
+      </label>
+      <p class="hint">Usado na previsão de peso. O total do plano está normalmente
+      no documento do nutricionista; se não souberes, pergunta-lhe.</p>
+
+      <div class="row-2">
+        <label class="field">
+          <span class="label">Alvo · Treino 1 <em>por semana</em></span>
+          <select id="p-weekly-target">
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="label">Alvo · Treino 2 <em>por semana</em></span>
+          <select id="p-weekly-target2">
+            <option value="0">0</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Presets de treino</h2>
+      <p class="hint">Treinos-modelo para escolher no registo: o WOD fica todo preenchido e
+      só falta o tempo, as calorias e a FC. Para mudar o conteúdo de um preset, abre uma
+      sessão, ajusta o WOD e carrega em "Guardar como preset" com o mesmo nome.</p>
+      <div id="preset-list" class="preset-list"></div>
+      <div class="btn-stack">
+        <button type="button" class="btn-secondary" id="btn-presets-restore">Repor os presets do plano</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Catálogo de movimentos</h2>
+      <div class="new-exercise">
+        <input type="text" id="f-cat-name" placeholder="Novo movimento (inglês)">
+        <select id="f-cat-category">
+          <option value="barbell">barbell</option>
+          <option value="dumbbell">dumbbell</option>
+          <option value="gymnastics">gymnastics</option>
+          <option value="other">other</option>
+        </select>
+        <select id="f-cat-unit" aria-label="Unidade">
+          <option value="reps">reps</option>
+          <option value="cal">cal</option>
+          <option value="m">m</option>
+          <option value="s">s</option>
+        </select>
+        <button class="btn-secondary" id="btn-cat-add">Criar</button>
+      </div>
+      <div id="catalog-list" class="catalog"></div>
+    </section>
+
+    <section class="panel danger-panel">
+      <h2>Apagar tudo</h2>
+      <p class="hint">Remove sessões, séries, WODs, medições e catálogo. Exporta antes.</p>
+      <button class="btn-danger" id="btn-wipe">Apagar todos os dados</button>
+    </section>
+  </section>
+
+  <!-- ============ EDITOR DE SESSÃO ============ -->
+  <section class="view editor" id="view-editor" hidden>
+    <header class="topbar">
+      <button class="btn-ghost" id="btn-cancel">Cancelar</button>
+      <h1 id="editor-title">Nova sessão</h1>
+      <button class="btn-primary" id="btn-save">Guardar</button>
+    </header>
+
+    <div class="editor-body">
+
+      <label class="field">
+        <span class="label">Data</span>
+        <input type="date" id="f-date">
+      </label>
+
+      <div class="field">
+        <span class="label">Treino do dia</span>
+        <div class="segmented small" id="f-slot">
+          <button type="button" class="seg is-active" data-slot="1">Treino 1 · CrossFit</button>
+          <button type="button" class="seg" data-slot="2">Treino 2</button>
+        </div>
+      </div>
+
+      <div class="preset-row">
+        <select id="f-preset" aria-label="Aplicar um preset de treino">
+          <option value="">Usar um preset…</option>
+        </select>
+        <button type="button" class="btn-secondary" id="btn-save-preset">Guardar como preset</button>
+      </div>
+      <p class="hint" id="preset-suggest"></p>
+
+      <details class="block" open>
+        <summary>Métricas</summary>
+        <div class="block-body">
+          <div class="row-3">
+            <label class="field">
+              <span class="label">Duração <em>min</em></span>
+              <input type="number" id="f-duration" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Calorias <em>kcal</em></span>
+              <input type="number" id="f-calories" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">FC média <em>bpm</em></span>
+              <input type="number" id="f-avghr" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <details class="block" open>
+        <summary>Força</summary>
+        <div class="block-body">
+          <div id="groups"></div>
+
+          <div class="add-exercise">
+            <select id="f-exercise-pick">
+              <option value="">Adicionar exercício…</option>
+            </select>
+          </div>
+
+          <div class="new-exercise" id="new-exercise" hidden>
+            <input type="text" id="f-new-exercise-name" placeholder="Nome do movimento (inglês)">
+            <select id="f-new-exercise-cat">
+              <option value="barbell">barbell</option>
+              <option value="dumbbell">dumbbell</option>
+              <option value="gymnastics">gymnastics</option>
+              <option value="other">other</option>
+            </select>
+            <button class="btn-secondary" id="btn-create-exercise">Criar</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="block" open>
+        <summary>WOD</summary>
+        <div class="block-body">
+          <label class="field">
+            <span class="label">Nome</span>
+            <input type="text" id="f-wod-name" list="wod-names" placeholder="Fran, AMRAP 12, Chipper…" autocomplete="off">
+            <datalist id="wod-names"></datalist>
+          </label>
+
+          <div class="row-1">
+            <label class="field">
+              <span class="label">Formato</span>
+              <select id="f-wod-format">
+                <option value="forTime">For time</option>
+                <option value="amrap">AMRAP</option>
+                <option value="emom">EMOM</option>
+                <option value="other">Outro</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="field">
+            <span class="label">Fizeste Rx?</span>
+            <div class="segmented small" id="wod-scaling">
+              <button type="button" class="seg" data-scaling="rxplus">Rx+</button>
+              <button type="button" class="seg is-active" data-scaling="rx">Rx</button>
+              <button type="button" class="seg" data-scaling="scaled">Scaled</button>
+            </div>
+          </div>
+
+          <label class="field" id="wod-cap-field">
+            <span class="label">Tempo limite <em>min, se houver</em></span>
+            <input type="number" id="f-wod-cap" inputmode="numeric" min="0" step="1" placeholder="—">
+          </label>
+
+          <div class="row-2" id="wod-time-fields">
+            <label class="field">
+              <span class="label">Tempo <em>min</em></span>
+              <input type="number" id="f-wod-min" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Tempo <em>seg</em></span>
+              <input type="number" id="f-wod-sec" inputmode="numeric" min="0" max="59" step="1" placeholder="—">
+            </label>
+          </div>
+
+          <p class="outcome-note" id="wod-outcome-note" hidden></p>
+
+          <label class="field" id="wod-reps-field" hidden>
+            <span class="label">Repetições feitas <em>até ao limite</em></span>
+            <input type="number" id="f-wod-repsdone" inputmode="numeric" min="0" step="1" placeholder="—">
+          </label>
+
+          <div class="row-2" id="wod-round-fields" hidden>
+            <label class="field">
+              <span class="label">Rondas</span>
+              <input type="number" id="f-wod-rounds" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Reps extra</span>
+              <input type="number" id="f-wod-extra" inputmode="numeric" min="0" step="1" placeholder="—">
+            </label>
+          </div>
+
+          <label class="field" id="wod-rounds-planned-field">
+            <span class="label">Rondas prescritas <em>se as houver</em></span>
+            <input type="number" id="f-wod-rounds-planned" inputmode="numeric" min="0" step="1" placeholder="—">
+          </label>
+
+          <div class="field">
+            <span class="label">Movimentos</span>
+            <div id="wod-movements"></div>
+            <p class="hint">Mesmo banco de exercícios da força. Reps aceita um número
+            ou um esquema como 21-15-9.</p>
+          </div>
+
+          <label class="field">
+            <span class="label">Descrição <em>o que não cabe acima</em></span>
+            <textarea id="f-wod-desc" rows="2" placeholder="21-15-9, buy-in de 400 m, etc."></textarea>
+          </label>
+        </div>
+      </details>
+
+      <label class="field">
+        <span class="label">Notas da sessão</span>
+        <textarea id="f-notes" rows="2" placeholder="Como correu, o que doeu, o que ajustar"></textarea>
+      </label>
+
+      <button class="btn-danger" id="btn-delete" hidden>Apagar sessão</button>
+    </div>
+  </section>
+
+  <!-- ============ EDITOR DE MEDIÇÃO CORPORAL ============ -->
+  <section class="view editor" id="view-body-editor" hidden>
+    <header class="topbar">
+      <button class="btn-ghost" id="btn-body-cancel">Cancelar</button>
+      <h1 id="body-editor-title">Nova medição</h1>
+      <button class="btn-primary" id="btn-body-save">Guardar</button>
+    </header>
+
+    <div class="editor-body">
+      <label class="field">
+        <span class="label">Data</span>
+        <input type="date" id="b-date">
+      </label>
+
+      <div class="row-2">
+        <label class="field">
+          <span class="label">Peso <em>kg</em></span>
+          <input type="number" id="b-weight" inputmode="decimal" min="0" step="0.1" placeholder="—">
+        </label>
+        <label class="field">
+          <span class="label">Massa gorda <em>%</em></span>
+          <input type="number" id="b-bodyfat" inputmode="decimal" min="0" step="0.1" placeholder="—">
+        </label>
+      </div>
+
+      <details class="block" open>
+        <summary>Medidas em cm</summary>
+        <div class="block-body">
+          <div class="row-2">
+            <label class="field">
+              <span class="label">Cintura</span>
+              <input type="number" id="b-waist" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Anca</span>
+              <input type="number" id="b-hip" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Peito</span>
+              <input type="number" id="b-chest" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Pescoço</span>
+              <input type="number" id="b-neck" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Braço direito</span>
+              <input type="number" id="b-armR" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+            <label class="field">
+              <span class="label">Coxa direita</span>
+              <input type="number" id="b-thighR" inputmode="decimal" min="0" step="0.5" placeholder="—">
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <label class="field">
+        <span class="label">Notas</span>
+        <textarea id="b-notes" rows="2" placeholder="Em jejum, depois do treino, etc."></textarea>
+      </label>
+
+      <button class="btn-danger" id="btn-body-delete" hidden>Apagar medição</button>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tabbar" id="tabbar">
+  <button class="tab is-active" data-target="evolucao">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V11M10 19V5M16 19v-6M22 19H2"/></svg>
+    <span>Evolução</span>
+  </button>
+  <button class="tab" data-target="treino">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7v10M3 9v6M18 7v10M21 9v6M6 12h12"/></svg>
+    <span>Treino</span>
+  </button>
+  <button class="fab" id="btn-fab" aria-label="Nova sessão">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+  <button class="tab" data-target="corpo">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><path d="M5 9h14M12 9v6M12 15l-3 6M12 15l3 6"/></svg>
+    <span>Corpo</span>
+  </button>
+  <button class="tab" data-target="definicoes">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+    <span>Definições</span>
+  </button>
+</nav>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="js/db.js"></script>
+<script src="js/drive.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/overview.js"></script>
+<script src="js/compare.js"></script>
+<script src="js/potential.js"></script>
+<script src="js/rm.js"></script>
+<script src="js/presets.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
