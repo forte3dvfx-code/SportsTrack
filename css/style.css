@@ -2305,3 +2305,155 @@ body {
 .preset-item select { width: auto; padding: 6px 8px; font-size: 13px; }
 
 .rc-unit { font-size: 10px; }
+
+/* ============================================================
+   v28 — Nutrição: plano, troca de opções e lista de compras
+   ============================================================ */
+
+#nutri-tabs { margin-bottom: 14px; }
+.nutri-tip { margin: -4px 4px 12px; }
+
+/* Resumo do dia */
+.nutri-summary { display: flex; flex-direction: column; gap: 12px; }
+.ns-main { display: flex; flex-direction: column; }
+.ns-label { font-size: 12px; color: var(--ink-dim); }
+.ns-kcal { font-size: 38px; font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; }
+.ns-kcal small { font-size: 15px; color: var(--ink-dim); font-weight: 700; }
+.ns-sub { font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+.ns-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ns-chip {
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+}
+.nutri-summary .btn-secondary { font-size: 13px; }
+
+/* Refeição */
+.nf-meal { padding: 14px 16px; }
+.nf-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.nf-head h2 { margin: 0; flex: 1; }
+.nf-time {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(92, 168, 255, 0.14);
+  color: var(--load);
+  font-size: 12px;
+  font-weight: 800;
+}
+.nf-total { font-size: 14px; font-weight: 800; color: var(--load); }
+
+/* Linha de alimento: nome · quantidade · kcal · ⇄ */
+.nf-item { border-bottom: 1px solid var(--line); }
+.nf-item:last-of-type { border-bottom: none; }
+
+.nf-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 40px 38px;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 11px 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: inherit;
+  text-align: left;
+  font-weight: 400;
+}
+
+.nf-row:disabled { opacity: 1; cursor: default; }
+.nf-name { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nf-qty { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+.nf-kcal { font-size: 13px; font-weight: 800; text-align: right; }
+.nf-swap {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--load);
+  text-align: center;
+  padding: 3px 0;
+  border-radius: 999px;
+  background: rgba(92, 168, 255, 0.12);
+}
+.nf-swap:empty { background: none; }
+.nf-item.is-open .nf-swap { background: var(--grad); color: var(--on-accent); }
+
+/* Opções de troca */
+.nf-opts { display: flex; flex-direction: column; gap: 6px; padding: 0 0 12px; }
+
+.nf-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  text-align: left;
+  font-weight: 400;
+}
+
+.nf-opt b { font-size: 14px; }
+.nf-opt small { font-size: 11px; color: var(--ink-dim); }
+.nf-opt.is-on { background: var(--grad); border-color: transparent; color: var(--on-accent); box-shadow: var(--glow); }
+.nf-opt.is-on small { color: var(--on-accent); opacity: 0.8; }
+
+/* Dicas e receitas */
+.nf-more { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.nf-more summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--load); list-style: none; }
+.nf-more summary::-webkit-details-marker { display: none; }
+.nf-more summary::before { content: "+ "; }
+.nf-more[open] summary::before { content: "– "; }
+.nf-more p, .nf-more li { font-size: 13px; color: var(--ink-dim); line-height: 1.5; }
+.nf-more ol, .nf-more ul { padding-left: 20px; margin: 6px 0; }
+.nf-recipe { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.nf-recipe b { display: block; font-size: 14px; }
+.nf-recipe small { font-size: 11px; color: var(--ink-faint); }
+
+/* Lista de compras */
+#shop-days { margin: 0 0 10px; }
+.shop-sec h2 { margin-bottom: 6px; }
+
+.shop-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.shop-row:last-child { border-bottom: none; }
+.shop-row input { width: 20px; height: 20px; margin: 0; accent-color: var(--load); }
+.shop-name { font-size: 14px; font-weight: 600; }
+.shop-qty { font-size: 13px; font-weight: 700; color: var(--load); text-align: right; white-space: nowrap; }
+.shop-row.is-done .shop-name, .shop-row.is-done .shop-qty { color: var(--ink-faint); text-decoration: line-through; }
+
+/* Orientações */
+.ng-list { padding-left: 18px; margin: 0; }
+.ng-list li { font-size: 14px; line-height: 1.55; color: var(--ink-dim); margin-bottom: 6px; }
+
+@media (max-width: 380px) {
+  .nf-row { grid-template-columns: minmax(0, 1fr) auto 34px 34px; gap: 6px; }
+}
+
+/* ==========================================================================
+   v29 — Deslizar com o dedo entre separadores
+   ========================================================================== */
+
+html, body { overscroll-behavior-x: none; }
+
+@keyframes slide-from-right { from { transform: translateX(28%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slide-from-left  { from { transform: translateX(-28%); opacity: 0; } to { transform: none; opacity: 1; } }
+#app > .view.slide-from-right { animation: slide-from-right .24s cubic-bezier(.2,.7,.2,1); }
+#app > .view.slide-from-left  { animation: slide-from-left  .24s cubic-bezier(.2,.7,.2,1); }
+
+@media (prefers-reduced-motion: reduce) {
+  #app > .view.slide-from-right, #app > .view.slide-from-left { animation: none; }
+}

@@ -10,7 +10,7 @@
  * Mesmo assim, incrementa CACHE_NAME sempre que alterares ficheiros:
  * e o que garante que a copia offline tambem fica actualizada. */
 
-const CACHE_NAME = 'treino-v27';
+const CACHE_NAME = 'treino-v29';
 
 const SHELL = [
   './',
@@ -24,6 +24,7 @@ const SHELL = [
   './js/potential.js',
   './js/rm.js',
   './js/presets.js',
+  './js/nutri.js',
   './js/app.js',
   './manifest.json',
   './icons/icon-192.png',

@@ -2,7 +2,7 @@
  * Toda a persistência passa pelo objecto DB definido em db.js.
  * Os gráficos passam pelo objecto Chart definido em chart.js. */
 
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v29';
 
 /* A unidade de cada movimento é o que permite somar e comparar entre WODs.
  * Sem ela, "400" tanto são metros de corrida como repetições. */
@@ -131,6 +131,116 @@ async function switchTab(target) {
   // é pouca conta e evita ficarem desactualizados depois de gravar noutro sítio.
   if (target === 'evolucao') await renderEvolution();
   if (target === 'definicoes') await renderSettings();
+  if (target === 'nutricao') await renderNutri();
+}
+
+/* ---------- Deslizar entre separadores ---------- */
+
+// Arrastar o dedo na horizontal muda de separador, pela ordem da barra.
+// Só nos ecrãs principais (a barra visível): no editor um gesto acidental
+// deitaria fora o que está a ser escrito. Sliders e zonas que deslizam
+// sozinhas na horizontal (chips, tabelas largas) ficam com o gesto.
+const SWIPE_MIN = 60;        // px de arrasto para contar
+const SWIPE_FLICK = 0.45;    // px/ms: um toque rápido chega mesmo curto
+
+function tabOrder() {
+  return Array.from(document.querySelectorAll('.tab')).map((t) => t.dataset.target);
+}
+
+function currentTab() {
+  const v = document.querySelector('#app > .view:not([hidden])');
+  return v ? v.dataset.view : null;
+}
+
+function swipeBlocked(el) {
+  for (let n = el; n && n !== document.body; n = n.parentElement) {
+    if (n.matches('input, textarea, select, [contenteditable], .no-swipe')) return true;
+    if (n.scrollWidth > n.clientWidth + 2) {
+      const ox = getComputedStyle(n).overflowX;
+      if (ox === 'auto' || ox === 'scroll') return true;
+    }
+  }
+  return false;
+}
+
+function bindSwipe() {
+  let start = null;   // {x, y, t, view}
+  let dragging = false;
+
+  const reset = (view) => {
+    if (!view) return;
+    view.style.transition = '';
+    view.style.transform = '';
+    view.style.opacity = '';
+  };
+
+  document.addEventListener('touchstart', (e) => {
+    start = null; dragging = false;
+    if (e.touches.length !== 1 || $('#tabbar').hidden) return;
+    if (document.querySelector('dialog[open], .modal:not([hidden])')) return;
+    if (swipeBlocked(e.target)) return;
+    const view = document.querySelector('#app > .view:not([hidden])');
+    if (!view) return;
+    const p = e.touches[0];
+    // a borda esquerda é do Android (gesto de voltar)
+    if (p.clientX < 24 || p.clientX > window.innerWidth - 24) return;
+    start = { x: p.clientX, y: p.clientY, t: Date.now(), view };
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!start) return;
+    const p = e.touches[0];
+    const dx = p.clientX - start.x;
+    const dy = p.clientY - start.y;
+    if (!dragging) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { start = null; return; }  // é scroll
+      if (Math.abs(dx) < 12) return;
+      dragging = true;
+    }
+    const order = tabOrder();
+    const i = order.indexOf(currentTab());
+    const edge = (dx > 0 && i === 0) || (dx < 0 && i === order.length - 1);
+    const shift = edge ? dx * 0.25 : dx * 0.6;   // nas pontas resiste
+    start.view.style.transition = 'none';
+    start.view.style.transform = `translateX(${shift}px)`;
+    start.view.style.opacity = String(1 - Math.min(Math.abs(shift) / window.innerWidth, 0.5));
+  }, { passive: true });
+
+  const end = async (e) => {
+    if (!start) return;
+    const s = start; start = null;
+    if (!dragging) return;
+    dragging = false;
+    const p = e.changedTouches[0];
+    const dx = p.clientX - s.x;
+    const speed = Math.abs(dx) / Math.max(Date.now() - s.t, 1);
+    const order = tabOrder();
+    const i = order.indexOf(currentTab());
+    const next = i + (dx < 0 ? 1 : -1);
+    const go = (Math.abs(dx) > SWIPE_MIN || speed > SWIPE_FLICK) && next >= 0 && next < order.length;
+
+    if (!go) {
+      s.view.style.transition = 'transform .2s ease, opacity .2s ease';
+      s.view.style.transform = '';
+      s.view.style.opacity = '';
+      setTimeout(() => reset(s.view), 220);
+      return;
+    }
+    reset(s.view);
+    await switchTab(order[next]);
+    const view = document.querySelector('#app > .view:not([hidden])');
+    if (view) {
+      view.classList.remove('slide-from-left', 'slide-from-right');
+      void view.offsetWidth;   // reinicia a animação
+      view.classList.add(dx < 0 ? 'slide-from-right' : 'slide-from-left');
+      setTimeout(() => view.classList.remove('slide-from-left', 'slide-from-right'), 260);
+    }
+  };
+  document.addEventListener('touchend', end, { passive: true });
+  document.addEventListener('touchcancel', () => {
+    if (start) reset(start.view);
+    start = null; dragging = false;
+  }, { passive: true });
 }
 
 /* ---------- Lista de sessões ---------- */
@@ -3195,6 +3305,7 @@ function bindEvents() {
   document.querySelectorAll('.tab').forEach((t) => {
     t.addEventListener('click', () => switchTab(t.dataset.target));
   });
+  bindSwipe();
 
   // Sessões
   $('#btn-new-session').addEventListener('click', () => openEditor(null));
@@ -3325,6 +3436,7 @@ function bindEvents() {
     toast('Alvo do Treino 2: ' + weeklyTarget2 + ' por semana');
   });
   bindPresetEvents();
+  bindNutriEvents();
   [['#p-diet-train', 'dietKcalTrain'], ['#p-diet-rest', 'dietKcalRest'],
    ['#p-maint-train', 'maintKcalTrain'], ['#p-maint-rest', 'maintKcalRest']].forEach(([sel, key]) => {
     $(sel).addEventListener('change', async (ev) => {

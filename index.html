@@ -444,6 +444,74 @@
     </div>
   </section>
 
+  <!-- ============ SEPARADOR: NUTRIÇÃO ============ -->
+  <section class="view" id="view-nutricao" data-view="nutricao" hidden>
+    <header class="topbar">
+      <div>
+        <h1>Nutrição</h1>
+        <p class="greet" id="nutri-plan-name"></p>
+      </div>
+    </header>
+
+    <div class="segmented" id="nutri-tabs" role="tablist">
+      <button class="seg is-active" data-nview="plano" role="tab">Plano</button>
+      <button class="seg" data-nview="compras" role="tab">Compras</button>
+      <button class="seg" data-nview="guias" role="tab">Orientações</button>
+    </div>
+
+    <div id="nutri-empty" class="panel" hidden>
+      <h2>Ainda sem plano alimentar</h2>
+      <p class="hint">Importa o ficheiro do teu plano (JSON) ou experimenta com um plano de
+      exemplo fictício. O plano fica guardado só neste telemóvel e entra nas cópias de segurança.</p>
+      <div class="btn-stack">
+        <button type="button" class="btn-primary" id="btn-nutri-import2">Importar o meu plano</button>
+        <button type="button" class="btn-secondary" id="btn-nutri-demo2">Ver um exemplo</button>
+      </div>
+    </div>
+
+    <div data-nutri-panel="plano" hidden>
+      <section class="panel nutri-summary" id="nutri-summary"></section>
+      <p class="hint nutri-tip">Toca num alimento com ⇄ para escolher outra opção. A escolha fica
+      guardada e a lista de compras acompanha.</p>
+      <div id="nutri-meals"></div>
+    </div>
+
+    <div data-nutri-panel="compras" hidden>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Lista de compras</h2>
+          <small class="muted" id="shop-progress"></small>
+        </div>
+        <div class="segmented small" id="shop-days">
+          <button type="button" class="seg" data-days="1">1 dia</button>
+          <button type="button" class="seg" data-days="3">3 dias</button>
+          <button type="button" class="seg is-active" data-days="7">Semana</button>
+        </div>
+        <p class="hint">Calculada a partir das opções escolhidas no plano. Arroz, massa, carne e
+        peixe aparecem em peso cru (o plano dá-os cozinhados). Marca o que já tens no carrinho.</p>
+        <button type="button" class="btn-ghost" id="btn-shop-clear">Desmarcar tudo</button>
+      </section>
+      <div id="shop-list"></div>
+    </div>
+
+    <div data-nutri-panel="guias" hidden>
+      <div id="nutri-guides"></div>
+    </div>
+
+    <section class="panel">
+      <h2>Plano</h2>
+      <div class="btn-stack">
+        <button type="button" class="btn-secondary" id="btn-nutri-import">Importar plano (JSON)</button>
+        <button type="button" class="btn-secondary" id="btn-nutri-export">Exportar plano</button>
+        <button type="button" class="btn-secondary" id="btn-nutri-demo">Plano de exemplo</button>
+        <button type="button" class="btn-ghost" id="btn-nutri-clear">Apagar plano</button>
+        <input type="file" id="file-nutri" accept="application/json,.json" hidden>
+      </div>
+      <p class="hint">Calorias e proteína são estimativas a partir de tabelas de composição
+      (TACO/USDA): servem para comparar opções, não substituem a nutricionista.</p>
+    </section>
+  </section>
+
   <!-- ============ SEPARADOR: DEFINIÇÕES ============ -->
   <section class="view" id="view-definicoes" data-view="definicoes" hidden>
     <header class="topbar"><h1>Definições</h1></header>
@@ -886,6 +954,10 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><path d="M5 9h14M12 9v6M12 15l-3 6M12 15l3 6"/></svg>
     <span>Corpo</span>
   </button>
+  <button class="tab" data-target="nutricao">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-2 1.5-3 4-3 7h3v11"/></svg>
+    <span>Nutrição</span>
+  </button>
   <button class="tab" data-target="definicoes">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
     <span>Definições</span>
@@ -902,6 +974,7 @@
 <script src="js/potential.js"></script>
 <script src="js/rm.js"></script>
 <script src="js/presets.js"></script>
+<script src="js/nutri.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

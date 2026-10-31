@@ -1,6 +1,7 @@
 /* db.js — camada de persistência (IndexedDB)
  * Todas as funções devolvem Promises. Sem dependências externas.
  *
+ * VERSÃO 6: acrescenta a store 'nutri' (plano alimentar, escolhas e lista de compras).
  * VERSÃO 5: acrescenta a store 'presets' (treinos-modelo editáveis).
  * VERSÃO 4: acrescenta a store 'prs' (tabela dos RM, um por movimento).
  * VERSÃO 3: acrescenta a store 'diet' (marcação diária do plano alimentar).
@@ -8,7 +9,7 @@
  * As migrações são aditivas — nada do que está gravado se perde. */
 
 const DB_NAME = 'treino-db';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 let _db = null;
 
@@ -144,6 +145,10 @@ function openDB() {
       // Novo na versão 5. Treinos-modelo (ex.: "Treino 2 · Quinta").
       if (!db.objectStoreNames.contains('presets')) {
         db.createObjectStore('presets', { keyPath: 'id' });
+      }
+      // Novo na versão 6. Registos por id: 'plan', 'selection', 'shopping'.
+      if (!db.objectStoreNames.contains('nutri')) {
+        db.createObjectStore('nutri', { keyPath: 'id' });
       }
     };
 
@@ -356,6 +361,24 @@ function deletePreset(id) {
   return tx('presets', 'readwrite', (t) => t.objectStore('presets').delete(id));
 }
 
+/* ---------- Nutrição ----------
+ * Registos: { id: 'plan', plan } o plano importado; { id: 'selection', choices }
+ * as opções escolhidas; { id: 'shopping', checked, days } a lista de compras. */
+
+function getNutri(id) {
+  return openDB().then((db) =>
+    reqToPromise(db.transaction('nutri').objectStore('nutri').get(id))
+  );
+}
+
+function setNutri(record) {
+  return tx('nutri', 'readwrite', (t) => t.objectStore('nutri').put(record));
+}
+
+function deleteNutri(id) {
+  return tx('nutri', 'readwrite', (t) => t.objectStore('nutri').delete(id));
+}
+
 /* ---------- Definições ---------- */
 
 async function getSetting(key, fallback) {
@@ -371,9 +394,9 @@ function setSetting(key, value) {
 /* ---------- Exportar / importar ---------- */
 
 async function exportAll() {
-  const [sessions, sets, wods, exercisesRows, bodyMetrics, diet, prs, presets] = await Promise.all([
+  const [sessions, sets, wods, exercisesRows, bodyMetrics, diet, prs, presets, nutri] = await Promise.all([
     getAll('sessions'), getAll('sets'), getAll('wods'),
-    getAll('exercises'), getAll('bodyMetrics'), getAll('diet'), getAll('prs'), getAll('presets')
+    getAll('exercises'), getAll('bodyMetrics'), getAll('diet'), getAll('prs'), getAll('presets'), getAll('nutri')
   ]);
   return {
     app: 'treino',
@@ -387,7 +410,8 @@ async function exportAll() {
       bodyMetrics: bodyMetrics,
       diet: diet,
       prs: prs,
-      presets: presets
+      presets: presets,
+      nutri: nutri
     }
   };
 }
@@ -399,7 +423,7 @@ async function exportAll() {
 async function importAll(payload) {
   if (!payload || !payload.data) throw new Error('Ficheiro sem o campo "data".');
   const d = payload.data;
-  const result = { sessions: 0, sets: 0, wods: 0, exercises: 0, bodyMetrics: 0, diet: 0, prs: 0, presets: 0 };
+  const result = { sessions: 0, sets: 0, wods: 0, exercises: 0, bodyMetrics: 0, diet: 0, prs: 0, presets: 0, nutri: 0 };
 
   const local = await getExercises();
   const byName = {};
@@ -435,7 +459,7 @@ async function importAll(payload) {
   const prByEx = {};
   localPrs.forEach((p) => { prByEx[p.exerciseId] = p; });
 
-  await tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet', 'prs', 'presets'], 'readwrite', (t) => {
+  await tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet', 'prs', 'presets', 'nutri'], 'readwrite', (t) => {
     toInsert.forEach((e) => t.objectStore('exercises').put(e));
     unitUpdates.forEach((u) => {
       const found = local.find((x) => x.id === u.id);
@@ -503,6 +527,13 @@ async function importAll(payload) {
       t.objectStore('presets').put(p);
       result.presets++;
     });
+
+    // Nutrição: plano, escolhas e lista de compras, pelo id.
+    (d.nutri || []).forEach((n) => {
+      if (!n || !n.id) return;
+      t.objectStore('nutri').put(n);
+      result.nutri++;
+    });
   });
 
   return result;
@@ -510,8 +541,8 @@ async function importAll(payload) {
 
 /* Apaga tudo menos as definições. Usado só pelo botão de reposição. */
 function clearAllData() {
-  return tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet', 'prs', 'presets'], 'readwrite', (t) => {
-    ['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet', 'prs', 'presets']
+  return tx(['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet', 'prs', 'presets', 'nutri'], 'readwrite', (t) => {
+    ['sessions', 'sets', 'wods', 'exercises', 'bodyMetrics', 'diet', 'prs', 'presets', 'nutri']
       .forEach((name) => t.objectStore(name).clear());
   });
 }
@@ -546,6 +577,9 @@ const DB = {
   getPresets: getPresets,
   savePreset: savePreset,
   deletePreset: deletePreset,
+  getNutri: getNutri,
+  setNutri: setNutri,
+  deleteNutri: deleteNutri,
   getSetting: getSetting,
   setSetting: setSetting,
   exportAll: exportAll,
