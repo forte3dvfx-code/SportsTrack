@@ -2,7 +2,7 @@
  * Toda a persistência passa pelo objecto DB definido em db.js.
  * Os gráficos passam pelo objecto Chart definido em chart.js. */
 
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v30';
 
 /* A unidade de cada movimento é o que permite somar e comparar entre WODs.
  * Sem ela, "400" tanto são metros de corrida como repetições. */
@@ -3436,6 +3436,8 @@ function bindEvents() {
     toast('Alvo do Treino 2: ' + weeklyTarget2 + ' por semana');
   });
   bindPresetEvents();
+  bindLibraryEvents();
+  bindTimerEvents();
   bindNutriEvents();
   [['#p-diet-train', 'dietKcalTrain'], ['#p-diet-rest', 'dietKcalRest'],
    ['#p-maint-train', 'maintKcalTrain'], ['#p-maint-rest', 'maintKcalRest']].forEach(([sel, key]) => {

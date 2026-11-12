@@ -2457,3 +2457,128 @@ html, body { overscroll-behavior-x: none; }
 @media (prefers-reduced-motion: reduce) {
   #app > .view.slide-from-right, #app > .view.slide-from-left { animation: none; }
 }
+
+/* ============================================================
+   v30 — Timer com som e treinos pré-definidos
+   ============================================================ */
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
+.topbar-spacer { width: 72px; flex-shrink: 0; }
+.preset-item { grid-template-columns: minmax(0, 1fr) auto auto auto auto auto; }
+
+/* Configuração */
+#timer-quick button { font-size: 12px; padding: 8px 12px; }
+.t-block {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.t-block-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--ink-dim); }
+.t-options { display: grid; grid-template-columns: 1fr auto auto; gap: 6px 14px; align-items: end; }
+.t-options .checkline { margin: 0 0 10px; }
+.t-options #btn-t-test { grid-column: 1 / -1; justify-self: start; font-size: 13px; padding: 6px 0; }
+.t-start { font-size: 18px; padding: 16px; }
+
+/* A correr: ecrã cheio, números grandes, cor pela fase */
+.timer-run {
+  --phase: var(--load);
+  min-height: calc(100dvh - 90px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 12px 0 calc(16px + env(safe-area-inset-bottom));
+  border-radius: var(--radius);
+  background: radial-gradient(120% 70% at 50% 30%, color-mix(in srgb, var(--phase) 22%, transparent), transparent 70%);
+  transition: background .3s ease;
+}
+.timer-run.is-prep { --phase: var(--amber); }
+.timer-run.is-rest { --phase: var(--ok); }
+.timer-run.is-paused { --phase: var(--ink-faint); }
+.tr-phase { font-size: 15px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--phase); margin-top: 8px; }
+.tr-label { font-size: 22px; font-weight: 700; min-height: 1.3em; padding: 0 12px; }
+.tr-clock {
+  font-size: min(30vw, 168px);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+  margin: 6px 0;
+}
+.tr-bar { width: 86%; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.tr-bar i { display: block; height: 100%; background: var(--phase); border-radius: 99px; }
+.tr-meta { width: 86%; display: flex; justify-content: space-between; font-size: 15px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.tr-meta span:first-child { color: var(--ink); font-weight: 700; }
+.tr-next { font-size: 14px; color: var(--ink-faint); min-height: 1.2em; }
+.tr-laps { font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; min-height: 1.2em; }
+.tr-actions { margin-top: auto; width: 100%; display: flex; flex-direction: column; gap: 12px; padding: 0 4px; }
+.tr-main { font-size: 24px; padding: 26px; border-radius: var(--radius); }
+.tr-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.tr-row button { padding: 14px 6px; }
+
+/* Resumo */
+.ts-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.ts-row:last-child { border-bottom: none; }
+.ts-row b { font-variant-numeric: tabular-nums; }
+.ts-laps { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.ts-laps b { color: var(--ink); }
+
+/* Janela da biblioteca */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(3, 6, 14, 0.72);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.modal[hidden] { display: none; }
+body.modal-open { overflow: hidden; }
+.modal-sheet {
+  width: 100%;
+  max-width: 640px;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 16px 16px calc(12px + env(safe-area-inset-bottom));
+}
+.modal-head { display: flex; justify-content: space-between; align-items: center; }
+.modal-head h2 { margin: 0; font-size: 18px; }
+.lib-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.lib-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.lib-item:has(input:checked) { border-color: var(--load); }
+.lib-item input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--load); }
+.lib-body b { display: block; font-size: 14px; }
+.lib-body small { display: block; font-size: 11px; color: var(--load); margin: 2px 0 4px; }
+.lib-desc { display: block; font-size: 12px; line-height: 1.4; color: var(--ink-dim); }
+.lib-foot { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+.lib-foot select { width: auto; padding: 8px; font-size: 13px; }
+.lib-foot button { font-size: 13px; padding: 10px 12px; }
+
+/* v30 — contar rondas com um toque no ecrã */
+.timer-run { -webkit-user-select: none; user-select: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+.timer-run.is-tap { background-color: color-mix(in srgb, var(--phase) 16%, transparent); }
+.timer-run.is-tap .tr-meta span:first-child { color: var(--phase); }
+.tr-tap-hint { font-size: 12px; color: var(--ink-faint); border: 1px dashed var(--line-strong); border-radius: 99px; padding: 6px 12px; }
+.t-tap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; margin: 0; }
+.ts-ask h2 { font-size: 17px; margin: 0 0 4px; }

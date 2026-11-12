@@ -169,12 +169,28 @@ function fillPresetSelect(dateISO) {
   const wd = weekdayOf(dateISO);
   sel.innerHTML = '<option value="">Usar um preset…</option>';
   const suggested = presetsCache.find((p) => p.weekday === wd && p.slot === editor.slot);
+  const mine = document.createElement('optgroup');
+  mine.label = 'Os meus presets';
   presetsCache.forEach((p) => {
     const o = document.createElement('option');
     o.value = p.id;
     o.textContent = (p === suggested ? '★ ' : '') + p.name;
-    sel.appendChild(o);
+    mine.appendChild(o);
   });
+  if (presetsCache.length) sel.appendChild(mine);
+  // Treinos pré-definidos ainda não importados: aplicam-se na mesma.
+  const lib = libraryNotImported();
+  if (lib.length) {
+    const g = document.createElement('optgroup');
+    g.label = 'Biblioteca (pré-definidos)';
+    lib.forEach((w) => {
+      const o = document.createElement('option');
+      o.value = 'lib:' + w.key;
+      o.textContent = w.name;
+      g.appendChild(o);
+    });
+    sel.appendChild(g);
+  }
   $('#preset-suggest').textContent = suggested
     ? 'Sugerido para ' + WEEKDAYS_PT[wd].toLowerCase() + ': ' + suggested.name
     : '';
@@ -182,16 +198,19 @@ function fillPresetSelect(dateISO) {
 
 /* Preenche o WOD com o preset. Tempo, calorias e FC ficam por preencher. */
 async function applyPreset(id) {
-  const p = presetsCache.find((x) => x.id === id);
+  const fromLib = String(id).startsWith('lib:');
+  const p = fromLib ? libraryPreset(id) : presetsCache.find((x) => x.id === id);
   if (!p) return;
   const hasWod = $('#f-wod-name').value.trim() || wodMovements.length;
   if (hasWod && !confirm('Substituir o WOD desta sessão pelo preset "' + p.name + '"?')) return;
 
   // Movimentos que ainda não estão no catálogo são criados (pelo nome).
+  if (fromLib) await ensureExercises(PRESET_EXERCISES.concat(LIBRARY_EXERCISES));
   const missing = p.movements.filter((m) => !exerciseIdByName(m.name)).map((m) => [m.name, 'other', 'reps']);
   if (missing.length) await ensureExercises(missing);
 
   setEditorSlot(p.slot || 2);
+  editor.presetId = id;   // o timer do editor arranca com a configuração deste treino
   $('#f-wod-name').value = p.name;
   $('#f-wod-format').value = p.format || 'other';
   $('#f-wod-cap').value = p.capMin != null ? p.capMin : '';
@@ -243,6 +262,10 @@ async function savePresetFromEditor() {
     })),
     updatedAt: new Date().toISOString()
   };
+  // Mantém o timer do preset que se substitui (ou do treino aplicado).
+  const keepTimer = presetTimer(same) || (editor.presetId && presetTimer(
+    presetsCache.find((x) => x.id === editor.presetId) || libraryPreset(editor.presetId)));
+  if (keepTimer) record.timer = cloneJSON(keepTimer);
   await DB.savePreset(record);
   presetsCache = await DB.getPresets();
   fillPresetSelect(date);
@@ -323,9 +346,20 @@ function renderPresetList() {
       toast('Preset apagado');
     });
 
+    const timer = document.createElement('button');
+    timer.type = 'button';
+    timer.className = 'set-remove';
+    timer.textContent = '⏱';
+    const tcfg = presetTimer(p);
+    timer.disabled = !tcfg;
+    timer.title = tcfg ? 'Timer: ' + timerSummary(tcfg) : 'Sem timer';
+    timer.setAttribute('aria-label', 'Abrir o timer de ' + p.name);
+    timer.addEventListener('click', () => openTimer({ from: 'treino', cfg: tcfg, presetId: p.id }));
+
     row.appendChild(info);
     row.appendChild(day);
     row.appendChild(slot);
+    row.appendChild(timer);
     row.appendChild(rename);
     row.appendChild(del);
     host.appendChild(row);
